@@ -1,0 +1,7 @@
+/* Fitness tracker — tight alignment with finance-dashboard feel */
+div.block-container {
+  padding-top: 1.5rem;
+}
+.stMetric label {
+  font-size: 0.85rem !important;
+}
