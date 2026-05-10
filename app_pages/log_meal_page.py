@@ -87,6 +87,10 @@ mappings = cached_food_mappings_dict()
 effective = get_effective_food_subcategories()
 categories = sorted(effective.keys())
 
+# Clear meal name on the rerun after a successful add (must run before the selectbox renders)
+if st.session_state.pop("_fitness_meal_name_reset", False):
+    st.session_state.fitness_meal_name_input = ""
+
 # --- Meal name field (drives inference, like description in financial tracker) ---
 df = cached_load_meals()
 df_hash = meals_df_hash(df)
@@ -246,7 +250,7 @@ if add_meal:
                 if res_cat and res_sub:
                     save_learned_mapping(meal_name_val, res_cat, res_sub)
                 st.session_state["_fitness_json_reset"] = True
-                st.session_state.fitness_meal_name_input = ""
+                st.session_state["_fitness_meal_name_reset"] = True
                 st.toast(f"Logged {meal_name_val} — {meal.calories_kcal:.0f} kcal", icon="✅")
                 st.rerun()
         except ValidationError as e:
