@@ -8,7 +8,9 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
-from utils.constants import EXERCISE_COLUMNS, paths
+from utils.constants import paths
+
+EXERCISE_COLUMNS = ["EXERCISE_DATE", "LOGGED_AT", "EXERCISE_NAME", "CALORIES_BURNED"]
 from utils.upstash_storage import KEY_EXERCISES, is_upstash_configured, load_from_upstash, save_to_upstash
 
 
