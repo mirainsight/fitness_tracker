@@ -14,16 +14,30 @@ from utils.food_category_storage import (
     add_food_category,
     add_food_subcategory,
     get_effective_food_subcategories,
+    is_user_added_food_subcategory,
+    load_user_food_categories,
+    remove_food_category,
+    remove_food_subcategory,
+    rename_food_category,
+    rename_food_subcategory,
 )
 from utils.food_mapping_storage import force_load_food_mappings_from_gsheets
 from utils.meal_schema import MealInput
 from utils.meal_storage import (
     force_sync_to_gsheets,
+    load_meals,
     meal_input_to_row,
     meal_row_to_json_text,
     save_meals,
 )
-from utils.meal_name_inference import infer_meal_category, save_learned_mapping, delete_learned_mapping, invalidate_inference_cache
+from utils.meal_name_inference import (
+    delete_learned_mapping,
+    infer_meal_category,
+    invalidate_inference_cache,
+    load_learned_mappings,
+    save_learned_mapping,
+    save_learned_mappings_bulk,
+)
 from utils.meal_streamlit_cache import (
     cached_food_mappings_dict,
     cached_get_meal_names_list,
@@ -104,15 +118,27 @@ else:
     st.session_state["_last_inferred_meal_name"] = ""
     st.session_state["_last_inferred_meal_result"] = None
 
-# Category / subcategory dropdowns
+# Category / subcategory dropdowns with inline add-new (finance-style)
+_ADD_NEW_CAT = "➕ Add new category"
+_ADD_NEW_SUB = "➕ Add new subcategory"
+
+cat_options = categories + [_ADD_NEW_CAT]
 if "fitness_log_cat" not in st.session_state:
     st.session_state.fitness_log_cat = categories[0] if categories else ""
-cat = st.selectbox("Category", categories, key="fitness_log_cat")
-subs = effective.get(cat, ["Other"])
-if st.session_state.get("fitness_log_sub") not in subs:
-    st.session_state.fitness_log_sub = subs[0] if subs else "Other"
-sub_ix = subs.index(st.session_state.fitness_log_sub) if st.session_state.fitness_log_sub in subs else 0
-sub = st.selectbox("Subcategory", subs, index=sub_ix, key="fitness_log_sub")
+cat = st.selectbox("Category", cat_options, key="fitness_log_cat")
+
+if cat == _ADD_NEW_CAT:
+    st.text_input("New category name", key="fitness_new_cat_inline", placeholder="e.g. Supplements")
+    st.text_input("New subcategory name", key="fitness_new_sub_inline", placeholder="e.g. Protein shake")
+    sub = _ADD_NEW_SUB
+else:
+    subs = effective.get(cat, ["Other"])
+    sub_options = subs + [_ADD_NEW_SUB]
+    if st.session_state.get("fitness_log_sub") not in sub_options:
+        st.session_state.fitness_log_sub = subs[0] if subs else "Other"
+    sub = st.selectbox("Subcategory", sub_options, key="fitness_log_sub")
+    if sub == _ADD_NEW_SUB:
+        st.text_input("New subcategory name", key="fitness_new_sub_inline", placeholder="e.g. Smoothie")
 
 # Inference hint + Wrong? Forget
 inferred = st.session_state.get("_last_inferred_meal_result")
@@ -129,23 +155,6 @@ if inferred:
             st.session_state["_last_inferred_meal_result"] = None
             st.session_state["_last_inferred_meal_name"] = ""
             st.rerun()
-
-with st.expander("Add taxonomy (optional)"):
-    nc = st.text_input("New category name")
-    if st.button("Add category") and nc:
-        if add_food_category(nc):
-            st.success("Added.")
-            st.rerun()
-        else:
-            st.warning("Already exists or invalid.")
-    ac = st.selectbox("Category", categories, key="fitness_add_sub_cat")
-    ns = st.text_input("New subcategory")
-    if st.button("Add subcategory") and ns:
-        if add_food_subcategory(ac, ns):
-            st.success("Added.")
-            st.rerun()
-        else:
-            st.warning("Duplicate or invalid.")
 
 # Template fill — sets meal name field + nutrition JSON
 tcol1, tcol2 = st.columns([4, 1])
@@ -192,29 +201,177 @@ if add_meal:
             meal = MealInput.model_validate_json(st.session_state.fitness_meal_json)
             jc = (meal.category or "").strip()
             js = (meal.subcategory or "").strip()
+
+            cat_val = st.session_state.get("fitness_log_cat", "")
+            sub_val = st.session_state.get("fitness_log_sub", "")
+            _error = None
+            res_cat = res_sub = ""
+
             if jc and js:
                 res_cat, res_sub = jc, js
+            elif cat_val == _ADD_NEW_CAT:
+                new_cat = (st.session_state.get("fitness_new_cat_inline") or "").strip()
+                new_sub = (st.session_state.get("fitness_new_sub_inline") or "").strip()
+                if not new_cat or not new_sub:
+                    _error = "Enter both category and subcategory names."
+                else:
+                    add_food_category(new_cat)
+                    add_food_subcategory(new_cat, new_sub)
+                    invalidate_inference_cache()
+                    st.session_state.fitness_log_cat = new_cat
+                    st.session_state.fitness_log_sub = new_sub
+                    res_cat, res_sub = new_cat, new_sub
+            elif sub_val == _ADD_NEW_SUB:
+                new_sub = (st.session_state.get("fitness_new_sub_inline") or "").strip()
+                if not new_sub:
+                    _error = "Enter the new subcategory name."
+                else:
+                    add_food_subcategory(cat_val, new_sub)
+                    invalidate_inference_cache()
+                    st.session_state.fitness_log_sub = new_sub
+                    res_cat, res_sub = cat_val, new_sub
             else:
-                res_cat = (st.session_state.get("fitness_log_cat") or "").strip()
-                res_sub = (st.session_state.get("fitness_log_sub") or "").strip()
-            if res_cat and not res_sub:
-                res_sub = (effective.get(res_cat, ["Other"]) or ["Other"])[0]
-            row = meal_input_to_row(meal, meal_date.isoformat(), meal_name=meal_name_val, category=res_cat, subcategory=res_sub)
-            df_new = pd.concat([cached_load_meals(), pd.DataFrame([row])], ignore_index=True)
-            save_meals(df_new)
-            invalidate_meal_caches()
-            if res_cat and res_sub:
-                save_learned_mapping(meal_name_val, res_cat, res_sub)
-            st.session_state["_fitness_json_reset"] = True
-            st.session_state.fitness_meal_name_input = ""
-            st.toast(f"Logged {meal_name_val} — {meal.calories_kcal:.0f} kcal", icon="✅")
-            st.rerun()
+                res_cat = cat_val.strip()
+                res_sub = sub_val.strip()
+
+            if _error:
+                st.error(_error)
+            else:
+                if res_cat and not res_sub:
+                    res_sub = (effective.get(res_cat, ["Other"]) or ["Other"])[0]
+                row = meal_input_to_row(meal, meal_date.isoformat(), meal_name=meal_name_val, category=res_cat, subcategory=res_sub)
+                df_new = pd.concat([cached_load_meals(), pd.DataFrame([row])], ignore_index=True)
+                save_meals(df_new)
+                invalidate_meal_caches()
+                if res_cat and res_sub:
+                    save_learned_mapping(meal_name_val, res_cat, res_sub)
+                st.session_state["_fitness_json_reset"] = True
+                st.session_state.fitness_meal_name_input = ""
+                st.toast(f"Logged {meal_name_val} — {meal.calories_kcal:.0f} kcal", icon="✅")
+                st.rerun()
         except ValidationError as e:
             st.error("JSON does not match the expected schema.")
             st.json(e.errors())
 
 df_rows = cached_load_meals()
 st.divider()
+
+# --- Rename or remove categories ---
+with st.expander("Rename or remove categories", expanded=False):
+    effective_r = get_effective_food_subcategories()
+    user_cats_r = load_user_food_categories()
+    user_cat_list = sorted(user_cats_r.keys())
+    user_sub_list = [
+        (c, s) for c in sorted(effective_r.keys()) for s in effective_r.get(c, [])
+        if is_user_added_food_subcategory(c, s)
+    ]
+
+    st.caption("User-added categories and subcategories only")
+
+    mod_col1, mod_col2 = st.columns(2)
+    with mod_col1:
+        if not user_cat_list:
+            st.info("No user-added categories to modify.")
+        else:
+            sel_cat = st.selectbox("Select category", options=user_cat_list, key="meal_sel_mod_cat")
+            if sel_cat:
+                new_name = st.text_input("New name (rename)", key="meal_rename_cat_new", placeholder="Leave blank to skip rename")
+                confirm_remove_cat = st.checkbox("I confirm I want to remove this category", key="meal_confirm_remove_cat")
+                btn_col1, btn_col2 = st.columns(2)
+                with btn_col1:
+                    if st.button("Rename category", key="meal_btn_rename_cat"):
+                        if new_name and new_name.strip() and new_name.strip() != sel_cat:
+                            if rename_food_category(sel_cat, new_name.strip()):
+                                df_upd = load_meals()
+                                if not df_upd.empty and "CATEGORY" in df_upd.columns:
+                                    mask = df_upd["CATEGORY"].astype(str).str.strip() == sel_cat
+                                    df_upd.loc[mask, "CATEGORY"] = new_name.strip()
+                                    save_meals(df_upd)
+                                learned = load_learned_mappings()
+                                updated = False
+                                for mk, cs in list(learned.items()):
+                                    if isinstance(cs, (list, tuple)) and len(cs) >= 2 and cs[0] == sel_cat:
+                                        learned[mk] = [new_name.strip(), cs[1]]
+                                        updated = True
+                                if updated:
+                                    save_learned_mappings_bulk(learned)
+                                invalidate_inference_cache()
+                                invalidate_meal_caches()
+                                st.success(f'Renamed "{sel_cat}" to "{new_name.strip()}"')
+                                st.rerun()
+                            else:
+                                st.warning(f'Category "{new_name.strip()}" already exists.')
+                        else:
+                            st.error("Enter a different name.")
+                with btn_col2:
+                    if st.button("Remove category", key="meal_btn_remove_cat", disabled=not confirm_remove_cat):
+                        df_check = cached_load_meals()
+                        n = 0
+                        if not df_check.empty and "CATEGORY" in df_check.columns:
+                            n = (df_check["CATEGORY"].astype(str).str.strip() == sel_cat).sum()
+                        if n > 0:
+                            st.error(f"Cannot remove: {n} meal(s) use this category. Reassign them first.")
+                        else:
+                            remove_food_category(sel_cat)
+                            invalidate_inference_cache()
+                            st.success(f'Removed category "{sel_cat}"')
+                            st.rerun()
+
+    with mod_col2:
+        if not user_sub_list:
+            st.info("No user-added subcategories to modify.")
+        else:
+            sel_opts = [f"{c} → {s}" for c, s in user_sub_list]
+            sel_idx = st.selectbox("Select subcategory", range(len(sel_opts)), format_func=lambda i: sel_opts[i], key="meal_sel_mod_sub")
+            if sel_idx is not None:
+                r_cat, r_sub = user_sub_list[sel_idx]
+                new_sub_rename = st.text_input("New name (rename)", key="meal_rename_sub_new", placeholder="Leave blank to skip rename")
+                confirm_remove_sub = st.checkbox("I confirm I want to remove this subcategory", key="meal_confirm_remove_sub")
+                btn_col1, btn_col2 = st.columns(2)
+                with btn_col1:
+                    if st.button("Rename subcategory", key="meal_btn_rename_sub"):
+                        if new_sub_rename and new_sub_rename.strip() and new_sub_rename.strip() != r_sub:
+                            if rename_food_subcategory(r_cat, r_sub, new_sub_rename.strip()):
+                                df_upd = load_meals()
+                                if not df_upd.empty and "CATEGORY" in df_upd.columns and "SUBCATEGORY" in df_upd.columns:
+                                    mask = (
+                                        (df_upd["CATEGORY"].astype(str).str.strip() == r_cat)
+                                        & (df_upd["SUBCATEGORY"].astype(str).str.strip() == r_sub)
+                                    )
+                                    df_upd.loc[mask, "SUBCATEGORY"] = new_sub_rename.strip()
+                                    save_meals(df_upd)
+                                learned = load_learned_mappings()
+                                updated = False
+                                for mk, cs in list(learned.items()):
+                                    if isinstance(cs, (list, tuple)) and len(cs) >= 2 and cs[0] == r_cat and cs[1] == r_sub:
+                                        learned[mk] = [r_cat, new_sub_rename.strip()]
+                                        updated = True
+                                if updated:
+                                    save_learned_mappings_bulk(learned)
+                                invalidate_inference_cache()
+                                invalidate_meal_caches()
+                                st.success(f'Renamed "{r_sub}" to "{new_sub_rename.strip()}" in {r_cat}')
+                                st.rerun()
+                            else:
+                                st.warning(f'Subcategory "{new_sub_rename.strip()}" already exists in {r_cat}.')
+                        else:
+                            st.error("Enter a different name.")
+                with btn_col2:
+                    if st.button("Remove subcategory", key="meal_btn_remove_sub", disabled=not confirm_remove_sub):
+                        df_check = cached_load_meals()
+                        n = 0
+                        if not df_check.empty and "CATEGORY" in df_check.columns and "SUBCATEGORY" in df_check.columns:
+                            n = (
+                                (df_check["CATEGORY"].astype(str).str.strip() == r_cat)
+                                & (df_check["SUBCATEGORY"].astype(str).str.strip() == r_sub)
+                            ).sum()
+                        if n > 0:
+                            st.error(f"Cannot remove: {n} meal(s) use this subcategory. Reassign them first.")
+                        else:
+                            remove_food_subcategory(r_cat, r_sub)
+                            invalidate_inference_cache()
+                            st.success(f'Removed "{r_sub}" from {r_cat}')
+                            st.rerun()
 
 with st.expander("Sync with Google Sheets"):
     st.markdown("Pushes meal log from Upstash → Sheets and reloads food mappings from Sheets → Upstash.")
