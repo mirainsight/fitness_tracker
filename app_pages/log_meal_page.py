@@ -46,7 +46,7 @@ from utils.meal_streamlit_cache import (
     meals_df_hash,
     preload_upstash_session_caches,
 )
-from utils.upstash_storage import get_last_gsheets_sync, save_last_gsheets_sync, test_upstash_connection
+from utils.upstash_storage import get_last_gsheets_sync, save_last_gsheets_sync
 
 load_maincss(paths["maincss"])
 preload_upstash_session_caches()
@@ -181,10 +181,6 @@ with tcol2:
             st.session_state.fitness_meal_name_input = str(template_name).strip()
             st.rerun()
 
-with st.expander("Diagnostics"):
-    if st.button("Test Upstash"):
-        ok, msg = test_upstash_connection()
-        (st.success if ok else st.error)(msg)
 
 meal_date = st.date_input("Meal date", value=date.today())
 st.text_area(
