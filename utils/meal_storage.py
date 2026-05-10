@@ -111,7 +111,7 @@ def _normalize_df(df: pd.DataFrame) -> pd.DataFrame:
             df[col] = "" if col in text_cols else 0.0
     for col in MEAL_COLUMNS:
         if col in df.columns:
-            if col in ("MEAL_DATE", "LOGGED_AT", "MEAL_NAME", "SERVING_SIZE", "SOURCE"):
+            if col in ("MEAL_DATE", "LOGGED_AT", "MEAL_NAME", "SERVING_SIZE", "SOURCE", "CATEGORY", "SUBCATEGORY"):
                 df[col] = df[col].fillna("").astype(str)
             else:
                 df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
