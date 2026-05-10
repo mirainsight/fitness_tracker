@@ -99,3 +99,59 @@ def add_food_subcategory(category: str, subcategory: str) -> bool:
     user[category] = subs
     save_user_food_categories(user)
     return True
+
+
+def is_user_added_food_subcategory(category: str, subcategory: str) -> bool:
+    return subcategory in load_user_food_categories().get(category, [])
+
+
+def rename_food_category(old_name: str, new_name: str) -> bool:
+    old_name, new_name = old_name.strip(), new_name.strip()
+    if not old_name or not new_name or old_name == new_name:
+        return False
+    user = load_user_food_categories()
+    if old_name not in user:
+        return False
+    if new_name in user or new_name in DEFAULT_FOOD_SUBCATEGORIES:
+        return False
+    user[new_name] = user.pop(old_name)
+    save_user_food_categories(user)
+    return True
+
+
+def rename_food_subcategory(category: str, old_sub: str, new_sub: str) -> bool:
+    category, old_sub, new_sub = category.strip(), old_sub.strip(), new_sub.strip()
+    if not category or not old_sub or not new_sub or old_sub == new_sub:
+        return False
+    user = load_user_food_categories()
+    subs = user.get(category, [])
+    if old_sub not in subs:
+        return False
+    if new_sub in subs or new_sub in DEFAULT_FOOD_SUBCATEGORIES.get(category, []):
+        return False
+    subs[subs.index(old_sub)] = new_sub
+    user[category] = subs
+    save_user_food_categories(user)
+    return True
+
+
+def remove_food_category(name: str) -> bool:
+    name = name.strip()
+    user = load_user_food_categories()
+    if name not in user:
+        return False
+    del user[name]
+    save_user_food_categories(user)
+    return True
+
+
+def remove_food_subcategory(category: str, subcategory: str) -> bool:
+    category, subcategory = category.strip(), subcategory.strip()
+    user = load_user_food_categories()
+    subs = user.get(category, [])
+    if subcategory not in subs:
+        return False
+    subs.remove(subcategory)
+    user[category] = subs
+    save_user_food_categories(user)
+    return True
