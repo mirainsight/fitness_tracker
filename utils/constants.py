@@ -7,6 +7,8 @@ paths = {
     "last_gsheets_sync": "data/last_gsheets_sync.txt",
     "food_categories_config": "data/food_categories.json",
     "food_mappings_local": "data/food_mappings.json",
+    "inference_learned": "data/meal_inference_learned.json",
+    "inference_word_scores": "data/meal_inference_word_scores.json",
 }
 
 # Spreadsheet ID is overridden by st.secrets["FITNESS_SPREADSHEET_ID"] when set.
