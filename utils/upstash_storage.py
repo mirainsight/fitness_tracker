@@ -13,6 +13,7 @@ KEY_LAST_GSHEETS_SYNC = "fitness:last_gsheets_sync"
 KEY_FOOD_MAPPINGS = "fitness:food_mappings"
 KEY_FOOD_CATEGORIES = "fitness:food_categories"
 KEY_MEAL_LEARNED = "fitness:meal_learned_mappings"
+KEY_EXERCISES = "fitness:exercises"
 
 
 def _get_upstash_creds():

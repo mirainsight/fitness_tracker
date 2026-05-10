@@ -9,6 +9,7 @@ import streamlit as st
 
 from utils.app_utils import load_maincss
 from utils.constants import paths
+from utils.exercise_storage import load_exercises
 from utils.meal_streamlit_cache import cached_load_meals
 from utils.target_storage import load_targets
 
@@ -16,6 +17,7 @@ load_maincss(paths["maincss"])
 st.title("Dashboard")
 
 df_raw = cached_load_meals()
+ex_raw = load_exercises()
 targets = load_targets()
 
 if df_raw.empty:
@@ -168,7 +170,44 @@ st.dataframe(pd.DataFrame(comp_rows), use_container_width=True, hide_index=True)
 
 st.divider()
 
-# ── Section 2: Energy trend & heatmap ────────────────────────────────────────
+# ── Section 2: Intake vs burned ───────────────────────────────────────────────
+st.subheader("⚡ Intake vs burned")
+
+base_burned = float(targets.get("base_calories_burned") or 0)
+
+# Build daily exercise burns
+ex_daily: dict = {}
+if not ex_raw.empty:
+    ex = ex_raw.copy()
+    ex["EXERCISE_DATE"] = pd.to_datetime(ex["EXERCISE_DATE"], errors="coerce").dt.date
+    ex["CALORIES_BURNED"] = pd.to_numeric(ex["CALORIES_BURNED"], errors="coerce").fillna(0)
+    ex = ex.loc[(ex["EXERCISE_DATE"] >= start) & (ex["EXERCISE_DATE"] <= end)]
+    ex_daily = ex.groupby("EXERCISE_DATE")["CALORIES_BURNED"].sum().to_dict()
+
+# Union of all dates in range that have either intake or exercise
+all_dates = sorted(set(daily["_day"].tolist()) | set(ex_daily.keys()))
+
+intake_vals = [float(daily.loc[daily["_day"] == day, "calories"].sum()) for day in all_dates]
+burned_vals = [base_burned + ex_daily.get(day, 0) for day in all_dates]
+date_labels = [pd.Timestamp(day) for day in all_dates]
+
+fig_ivb = go.Figure()
+fig_ivb.add_trace(go.Bar(name="Intake (kcal)", x=date_labels, y=intake_vals, marker_color="#2E86AB"))
+fig_ivb.add_trace(go.Bar(name="Burned (kcal)", x=date_labels, y=burned_vals, marker_color="#E63946"))
+fig_ivb.update_layout(
+    barmode="group",
+    legend=dict(orientation="h", yanchor="bottom", y=1.02),
+    margin=dict(t=30, b=40),
+    yaxis_title="kcal",
+    xaxis_title="",
+)
+if base_burned == 0 and not ex_daily:
+    st.caption("Set a base calories burned on **Daily targets** and log exercises on **Log meal** to see burned data.")
+st.plotly_chart(fig_ivb, use_container_width=True)
+
+st.divider()
+
+# ── Section 3: Energy trend & heatmap ────────────────────────────────────────
 st.subheader("🔥 Energy & calorie trend")
 
 fig_line = px.line(daily, x="date", y="calories", markers=True, labels={"calories": "kcal", "date": ""})

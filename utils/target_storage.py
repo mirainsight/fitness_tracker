@@ -63,6 +63,7 @@ def _default_targets() -> dict[str, Any]:
         "fat_g": 65,
         "fiber_g": 30,
         "sodium_mg_max": 2300,
+        "base_calories_burned": 0,
     }
 
 
@@ -172,6 +173,10 @@ def save_targets(data: dict[str, Any]) -> None:
             out[k] = float(data[k])
         except (TypeError, ValueError):
             pass
+    # preserve any extra keys not in defaults
+    for k, v in data.items():
+        if k not in out:
+            out[k] = v
     if is_upstash_configured():
         if save_to_upstash(KEY_TARGETS, json.dumps(out)):
             _save_local_file(out)

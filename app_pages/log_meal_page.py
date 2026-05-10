@@ -257,6 +257,49 @@ if add_meal:
 df_rows = cached_load_meals()
 st.divider()
 
+# --- Exercise log ---
+from utils.exercise_storage import exercise_to_row, load_exercises, save_exercises
+
+st.subheader("Log exercise")
+with st.form("exercise_form"):
+    ex_col1, ex_col2, ex_col3 = st.columns([2, 3, 2])
+    with ex_col1:
+        ex_date = st.date_input("Date", value=date.today(), key="ex_date")
+    with ex_col2:
+        ex_name = st.text_input("Exercise", placeholder="e.g. Running, Cycling, Gym…", key="ex_name")
+    with ex_col3:
+        ex_kcal = st.number_input("Calories burned", min_value=0.0, step=10.0, key="ex_kcal")
+    ex_submitted = st.form_submit_button("Add exercise", type="primary")
+
+if ex_submitted:
+    if not ex_name.strip():
+        st.error("Enter an exercise name.")
+    elif ex_kcal <= 0:
+        st.error("Enter calories burned.")
+    else:
+        ex_df = load_exercises()
+        new_row = exercise_to_row(ex_date.isoformat(), ex_name.strip(), ex_kcal)
+        ex_df = pd.concat([ex_df, pd.DataFrame([new_row])], ignore_index=True)
+        save_exercises(ex_df)
+        st.toast(f"Logged {ex_name.strip()} — {ex_kcal:.0f} kcal burned", icon="🏃")
+        st.rerun()
+
+ex_df_display = load_exercises()
+if not ex_df_display.empty:
+    ex_df_display = ex_df_display.copy()
+    ex_df_display["EXERCISE_DATE"] = pd.to_datetime(ex_df_display["EXERCISE_DATE"], errors="coerce")
+    ex_df_display = ex_df_display.sort_values("EXERCISE_DATE", ascending=False).head(10)
+    ex_df_display["EXERCISE_DATE"] = ex_df_display["EXERCISE_DATE"].dt.strftime("%Y-%m-%d")
+    st.dataframe(
+        ex_df_display[["EXERCISE_DATE", "EXERCISE_NAME", "CALORIES_BURNED"]].rename(
+            columns={"EXERCISE_DATE": "Date", "EXERCISE_NAME": "Exercise", "CALORIES_BURNED": "kcal burned"}
+        ),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+st.divider()
+
 # --- Rename or remove categories ---
 with st.expander("Rename or remove categories", expanded=False):
     effective_r = get_effective_food_subcategories()

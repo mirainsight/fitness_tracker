@@ -3,6 +3,7 @@
 paths = {
     "maincss": "static/main.css",
     "meals_csv": "data/meals.csv",
+    "exercises_csv": "data/exercises.csv",
     "targets_json": "data/daily_targets.json",
     "last_gsheets_sync": "data/last_gsheets_sync.txt",
     "food_categories_config": "data/food_categories.json",
@@ -26,6 +27,13 @@ DEFAULT_FOOD_SUBCATEGORIES: dict[str, list[str]] = {
     "Beverage": ["Coffee / tea", "Juice / smoothie", "Soft drink", "Other"],
     "Uncategorized": ["Other"],
 }
+
+EXERCISE_COLUMNS = [
+    "EXERCISE_DATE",
+    "LOGGED_AT",
+    "EXERCISE_NAME",
+    "CALORIES_BURNED",
+]
 
 MEAL_COLUMNS = [
     "MEAL_DATE",

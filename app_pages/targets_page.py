@@ -16,12 +16,21 @@ st.caption("Set daily goals. Compare against **today’s logged meals** below.")
 data = load_targets()
 
 with st.form("targets_form"):
+    st.markdown("**Intake targets**")
     cals = st.number_input("Calories (kcal)", min_value=0.0, value=float(data["calories_kcal"]), step=50.0)
     prot = st.number_input("Protein (g)", min_value=0.0, value=float(data["protein_g"]), step=5.0)
     carb = st.number_input("Carbohydrates (g)", min_value=0.0, value=float(data["carbohydrates_g"]), step=5.0)
     fat = st.number_input("Fat (g)", min_value=0.0, value=float(data["fat_g"]), step=1.0)
     fiber = st.number_input("Fiber (g)", min_value=0.0, value=float(data["fiber_g"]), step=1.0)
     sodium_max = st.number_input("Sodium ceiling (mg)", min_value=0.0, value=float(data["sodium_mg_max"]), step=50.0)
+    st.markdown("**Calories burned baseline**")
+    base_burned = st.number_input(
+        "Base calories burned / day (just living — TDEE without exercise)",
+        min_value=0.0,
+        value=float(data.get("base_calories_burned") or 0),
+        step=50.0,
+        help="Resting / baseline daily burn before any logged exercise. Used in the dashboard intake vs burned chart.",
+    )
     submitted = st.form_submit_button("Save targets")
 
 if submitted:
@@ -32,6 +41,7 @@ if submitted:
         "fat_g": fat,
         "fiber_g": fiber,
         "sodium_mg_max": sodium_max,
+        "base_calories_burned": base_burned,
     }
     save_targets(new_data)
     st.success("Targets saved.")
