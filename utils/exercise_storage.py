@@ -11,7 +11,9 @@ import streamlit as st
 from utils.constants import paths
 
 EXERCISE_COLUMNS = ["EXERCISE_DATE", "LOGGED_AT", "EXERCISE_NAME", "CALORIES_BURNED"]
-from utils.upstash_storage import KEY_EXERCISES, is_upstash_configured, load_from_upstash, save_to_upstash
+from utils.upstash_storage import is_upstash_configured, load_from_upstash, save_to_upstash
+
+KEY_EXERCISES = "fitness:exercises"
 
 
 def _get_path() -> Path:
