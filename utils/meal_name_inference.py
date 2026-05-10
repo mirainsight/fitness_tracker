@@ -240,6 +240,13 @@ def invalidate_inference_cache() -> None:
             st.session_state.pop(key, None)
 
 
+def save_learned_mappings_bulk(learned: dict) -> None:
+    _save_learned_to_storage(learned)
+    if hasattr(st, "session_state"):
+        st.session_state[_CACHE_LEARNED] = learned
+    _rebuild_word_scores()
+
+
 # Keep old name as alias so any other callers don't break
 def infer_food_category_subcategory(meal_name: str, mappings: dict[str, list[str]]) -> tuple[str, str]:
     result = _infer_from_sheet_keywords(meal_name, mappings)
