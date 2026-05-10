@@ -72,10 +72,11 @@ sample = """{
   }
 }"""
 
-if "fitness_meal_json" not in st.session_state:
-    st.session_state.fitness_meal_json = sample
+if not st.session_state.get("_fitness_json_initialized"):
+    st.session_state.fitness_meal_json = ""
+    st.session_state["_fitness_json_initialized"] = True
 elif st.session_state.pop("_fitness_json_reset", False):
-    st.session_state.fitness_meal_json = sample
+    st.session_state.pop("fitness_meal_json", None)
 
 with st.expander("Sample JSON"):
     st.code(
