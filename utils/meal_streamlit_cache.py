@@ -13,7 +13,7 @@ import pandas as pd
 import streamlit as st
 
 from utils.meal_storage import load_meals
-from utils.meals_display import prepare_meals_display_df
+from utils.meal_display import prepare_meals_display_df
 
 # Large option lists slow Streamlit (see finance-dashboard transactions_page).
 _MAX_MEAL_NAMES_DROPDOWN = 500
