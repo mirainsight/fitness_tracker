@@ -307,7 +307,6 @@ def meal_row_to_json_text(row: pd.Series) -> str:
             return 0.0
 
     payload = {
-        "meal_name": str(row.get("MEAL_NAME", "") or ""),
         "serving_size": str(row.get("SERVING_SIZE", "") or ""),
         "calories_kcal": num("CALORIES_KCAL"),
         "macronutrients": {
@@ -339,6 +338,7 @@ def meal_input_to_row(
     meal_date: str,
     source: str = "json",
     *,
+    meal_name: str = "",
     category: str = "",
     subcategory: str = "",
 ) -> dict[str, Any]:
@@ -348,7 +348,7 @@ def meal_input_to_row(
     return {
         "MEAL_DATE": meal_date,
         "LOGGED_AT": logged,
-        "MEAL_NAME": meal.meal_name,
+        "MEAL_NAME": meal_name or meal.meal_name or "",
         "CATEGORY": category or "",
         "SUBCATEGORY": subcategory or "",
         "SERVING_SIZE": meal.serving_size or "",
