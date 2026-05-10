@@ -387,7 +387,30 @@ with st.expander("Sync with Google Sheets"):
             st.error(f"Meal sync failed: {msg1}")
         ok2, msg2 = force_load_food_mappings_from_gsheets()
         if ok2:
-            st.success("Food mappings reloaded.")
+            # Extract unique (category, subcategory) pairs from mappings and merge into taxonomy
+            from utils.food_mapping_storage import load_food_mappings_from_storage as _load_mappings
+            from utils.constants import DEFAULT_FOOD_SUBCATEGORIES as _DEFAULTS
+            _new_mappings = _load_mappings()
+            _user_cats = load_user_food_categories()
+            _changed = False
+            for _cs in _new_mappings.values():
+                if not isinstance(_cs, (list, tuple)) or len(_cs) < 2:
+                    continue
+                _cat, _sub = str(_cs[0]).strip(), str(_cs[1]).strip()
+                if not _cat or not _sub:
+                    continue
+                if _sub in _DEFAULTS.get(_cat, []):
+                    continue
+                if _sub not in _user_cats.get(_cat, []):
+                    _user_cats.setdefault(_cat, [])
+                    if _sub not in _user_cats[_cat]:
+                        _user_cats[_cat].append(_sub)
+                        _changed = True
+            if _changed:
+                from utils.food_category_storage import save_user_food_categories as _save_cats
+                _save_cats(_user_cats)
+            invalidate_inference_cache()
+            st.success(f"Food mappings reloaded ({len(_new_mappings)} entries). Categories updated.")
         else:
             st.error(f"Mappings reload failed: {msg2}")
         st.rerun()
