@@ -12,6 +12,7 @@ KEY_TARGETS = "fitness:daily_targets"
 KEY_LAST_GSHEETS_SYNC = "fitness:last_gsheets_sync"
 KEY_FOOD_MAPPINGS = "fitness:food_mappings"
 KEY_FOOD_CATEGORIES = "fitness:food_categories"
+KEY_MEAL_LEARNED = "fitness:meal_learned_mappings"
 
 
 def _get_upstash_creds():
@@ -45,19 +46,35 @@ def _get_upstash_creds():
 
 
 def _get_upstash_client():
+    if hasattr(st, "session_state") and "_upstash_client" in st.session_state:
+        return st.session_state["_upstash_client"]
     url, token = _get_upstash_creds()
     if not url or not token:
         return None
     try:
         from upstash_redis import Redis
-
-        return Redis(url=str(url), token=str(token))
+        client = Redis(url=str(url), token=str(token))
+        if hasattr(st, "session_state"):
+            st.session_state["_upstash_client"] = client
+        return client
     except Exception:
         return None
 
 
 def is_upstash_configured() -> bool:
     return _get_upstash_client() is not None
+
+
+def batch_load_from_upstash(*keys: str) -> dict:
+    """Fetch multiple keys in one mget round-trip. Returns {key: value_or_None}."""
+    client = _get_upstash_client()
+    if not client or not keys:
+        return {k: None for k in keys}
+    try:
+        values = client.mget(*keys)
+        return {k: (v if v is not None else None) for k, v in zip(keys, values)}
+    except Exception:
+        return {k: None for k in keys}
 
 
 def load_from_upstash(key: str) -> Optional[str]:
