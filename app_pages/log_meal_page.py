@@ -60,6 +60,8 @@ sample = """{
 
 if "fitness_meal_json" not in st.session_state:
     st.session_state.fitness_meal_json = sample
+elif st.session_state.pop("_fitness_json_reset", False):
+    st.session_state.fitness_meal_json = sample
 
 with st.expander("Sample JSON"):
     st.code(
@@ -203,7 +205,7 @@ if add_meal:
             invalidate_meal_caches()
             if res_cat and res_sub:
                 save_learned_mapping(meal_name_val, res_cat, res_sub)
-            st.session_state.fitness_meal_json = sample
+            st.session_state["_fitness_json_reset"] = True
             st.session_state.fitness_meal_name_input = ""
             st.toast(f"Logged {meal_name_val} — {meal.calories_kcal:.0f} kcal", icon="✅")
             st.rerun()
