@@ -8,16 +8,15 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
-from utils.constants import paths
-
-EXERCISE_COLUMNS = ["EXERCISE_DATE", "LOGGED_AT", "EXERCISE_NAME", "CALORIES_BURNED"]
 from utils.upstash_storage import is_upstash_configured, load_from_upstash, save_to_upstash
 
+EXERCISE_COLUMNS = ["EXERCISE_DATE", "LOGGED_AT", "EXERCISE_NAME", "CALORIES_BURNED"]
 KEY_EXERCISES = "fitness:exercises"
+_EXERCISES_CSV = "data/exercises.csv"
 
 
 def _get_path() -> Path:
-    path = Path(paths["exercises_csv"])
+    path = Path(_EXERCISES_CSV)
     path.parent.mkdir(parents=True, exist_ok=True)
     return path
 
