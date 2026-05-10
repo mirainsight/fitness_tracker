@@ -2,6 +2,7 @@
 
 import json
 from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import streamlit as st
@@ -22,16 +23,19 @@ from utils.meal_storage import (
     meal_row_to_json_text,
     save_meals,
 )
-from utils.meal_name_inference import infer_food_category_subcategory
+from utils.meal_name_inference import infer_meal_category, save_learned_mapping, delete_learned_mapping, invalidate_inference_cache
 from utils.meal_streamlit_cache import (
     cached_food_mappings_dict,
     cached_get_meal_names_list,
     cached_load_meals,
+    invalidate_meal_caches,
     meals_df_hash,
+    preload_upstash_session_caches,
 )
 from utils.upstash_storage import get_last_gsheets_sync, save_last_gsheets_sync, test_upstash_connection
 
 load_maincss(paths["maincss"])
+preload_upstash_session_caches()
 
 
 def _peek_meal_name(json_str: str) -> str:
@@ -84,24 +88,40 @@ meal_name_preview = _peek_meal_name(st.session_state.fitness_meal_json)
 prev_peek = st.session_state.get("_fitness_meal_name_peek", "")
 if meal_name_preview != prev_peek:
     st.session_state["_fitness_meal_name_peek"] = meal_name_preview
+    inferred = infer_meal_category(meal_name_preview, mappings) if meal_name_preview else None
+    st.session_state["_last_inferred_meal_result"] = inferred
     st.session_state.pop("fitness_log_cat", None)
     st.session_state.pop("fitness_log_sub", None)
-
-inf_cat, inf_sub = infer_food_category_subcategory(meal_name_preview, mappings)
+    if inferred:
+        _, (cat_inf, sub_inf) = inferred
+        if cat_inf in categories:
+            st.session_state["fitness_log_cat"] = cat_inf
+            if sub_inf in effective.get(cat_inf, []):
+                st.session_state["fitness_log_sub"] = sub_inf
 
 if "fitness_log_cat" not in st.session_state:
-    st.session_state.fitness_log_cat = inf_cat if inf_cat in categories else (categories[0] if categories else "")
+    st.session_state.fitness_log_cat = categories[0] if categories else ""
 cat = st.selectbox("Category", categories, key="fitness_log_cat")
 subs = effective.get(cat, ["Other"])
 if st.session_state.get("fitness_log_sub") not in subs:
-    st.session_state.fitness_log_sub = (
-        inf_sub if (inf_cat == cat and inf_sub in subs) else subs[0]
-    )
+    st.session_state.fitness_log_sub = subs[0] if subs else "Other"
 sub_ix = subs.index(st.session_state.fitness_log_sub) if st.session_state.fitness_log_sub in subs else 0
 sub = st.selectbox("Subcategory", subs, index=sub_ix, key="fitness_log_sub")
 
-if meal_name_preview and mappings:
-    st.caption(f"Sheet inference for this name: **{inf_cat or '—'}** / **{inf_sub or '—'}** (longest keyword match)")
+inferred = st.session_state.get("_last_inferred_meal_result")
+if inferred:
+    source, (cat_inf, sub_inf) = inferred
+    source_label = {"learned": "saved", "word_scores": "similar", "sheet": "sheet"}.get(source, source)
+    col_infer, col_forget = st.columns([3, 1])
+    with col_infer:
+        st.caption(f"✨ Inferred ({source_label}): **{cat_inf}** → **{sub_inf}**")
+    with col_forget:
+        if st.button("Wrong? Forget", key="forget_meal_inference", help="Clear saved mapping for this meal name"):
+            delete_learned_mapping(meal_name_preview)
+            invalidate_inference_cache()
+            st.session_state["_last_inferred_meal_result"] = None
+            st.session_state["_fitness_meal_name_peek"] = ""
+            st.rerun()
 
 with st.expander("Add taxonomy (optional)"):
     nc = st.text_input("New category name")
@@ -166,13 +186,16 @@ if add_meal:
         if jc and js:
             res_cat, res_sub = jc, js
         else:
-            res_cat = (st.session_state.get("fitness_log_cat") or inf_cat or "").strip()
-            res_sub = (st.session_state.get("fitness_log_sub") or inf_sub or "").strip()
+            res_cat = (st.session_state.get("fitness_log_cat") or "").strip()
+            res_sub = (st.session_state.get("fitness_log_sub") or "").strip()
         if res_cat and not res_sub:
             res_sub = (effective.get(res_cat, ["Other"]) or ["Other"])[0]
         row = meal_input_to_row(meal, meal_date.isoformat(), category=res_cat, subcategory=res_sub)
         df_new = pd.concat([cached_load_meals(), pd.DataFrame([row])], ignore_index=True)
         save_meals(df_new)
+        invalidate_meal_caches()
+        if meal.meal_name and res_cat and res_sub:
+            save_learned_mapping(meal.meal_name, res_cat, res_sub)
         st.session_state.fitness_meal_json = sample
         st.toast(f"Logged {meal.meal_name} — {meal.calories_kcal:.0f} kcal", icon="✅")
         st.rerun()
@@ -182,7 +205,6 @@ if add_meal:
 
 df_rows = cached_load_meals()
 st.divider()
-st.caption(f"Last GSheets sync: **{get_last_gsheets_sync()}**  ·  Rows in log: **{len(df_rows)}**")
 
 with st.expander("Sync with Google Sheets"):
     st.markdown("Pushes meal log from Upstash → Sheets and reloads food mappings from Sheets → Upstash.")
@@ -190,7 +212,9 @@ with st.expander("Sync with Google Sheets"):
         df2 = cached_load_meals()
         ok1, msg1 = force_sync_to_gsheets(df2)
         if ok1:
-            save_last_gsheets_sync(datetime.now().isoformat(timespec="seconds"))
+            ts = datetime.now(ZoneInfo("Asia/Kuala_Lumpur")).strftime("%b %d, %Y %I:%M %p")
+            save_last_gsheets_sync(ts)
+            st.session_state["_fitness_last_gsheets_refresh"] = ts
             st.success("Meals synced to Google Sheets.")
         else:
             st.error(f"Meal sync failed: {msg1}")
@@ -200,3 +224,6 @@ with st.expander("Sync with Google Sheets"):
         else:
             st.error(f"Mappings reload failed: {msg2}")
         st.rerun()
+    if "_fitness_last_gsheets_refresh" not in st.session_state:
+        st.session_state["_fitness_last_gsheets_refresh"] = get_last_gsheets_sync()
+    st.caption(f"*Last refreshed: {st.session_state['_fitness_last_gsheets_refresh']}*  ·  Rows in log: **{len(df_rows)}**")
