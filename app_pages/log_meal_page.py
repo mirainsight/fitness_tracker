@@ -71,7 +71,10 @@ if "fitness_meal_json" not in st.session_state:
     st.session_state.fitness_meal_json = sample
 
 with st.expander("Sample JSON"):
-    st.code(sample, language="json")
+    st.code(
+        "Estimate based on my meal in chat or picture given. Output in the following format\n\n" + sample,
+        language="json",
+    )
 
 mappings = cached_food_mappings_dict()
 effective = get_effective_food_subcategories()
@@ -99,20 +102,6 @@ sub = st.selectbox("Subcategory", subs, index=sub_ix, key="fitness_log_sub")
 
 if meal_name_preview and mappings:
     st.caption(f"Sheet inference for this name: **{inf_cat or '—'}** / **{inf_sub or '—'}** (longest keyword match)")
-
-with st.expander("Food mapping sheet"):
-    st.markdown(
-        "Use a tab with columns such as **MEAL_KEY** (or KEYWORD / FOOD_KEY), **CATEGORY**, **SUBCATEGORY**. "
-        "Set the tab name in secrets as `FITNESS_FOOD_MAPPINGS_WORKSHEET` "
-        "(the `gid` in the URL is **not** the tab name — check the sheet tab label)."
-    )
-    if is_food_mappings_gsheets_configured():
-        if st.button("Reload mappings from Google Sheet"):
-            ok, msg = force_load_food_mappings_from_gsheets()
-            (st.success if ok else st.error)(msg)
-            st.rerun()
-    else:
-        st.caption("Configure `FITNESS_SPREADSHEET_ID` + credentials to load mappings from Sheets.")
 
 with st.expander("Add taxonomy (optional)"):
     nc = st.text_input("New category name")
@@ -167,11 +156,7 @@ st.text_area(
     key="fitness_meal_json",
 )
 
-col_a, col_b = st.columns(2)
-with col_a:
-    add_meal = st.button("Add meal", type="primary")
-with col_b:
-    sync_gs = st.button("Sync meals → Google Sheets")
+add_meal = st.button("Add meal", type="primary")
 
 if add_meal:
     try:
@@ -195,15 +180,23 @@ if add_meal:
         st.error("JSON does not match the expected meal schema.")
         st.json(e.errors())
 
-if sync_gs:
-    df2 = cached_load_meals()
-    ok, msg = force_sync_to_gsheets(df2)
-    if ok:
-        save_last_gsheets_sync(datetime.now().isoformat(timespec="seconds"))
-        st.success(msg)
-    else:
-        st.error(msg)
-
 df_rows = cached_load_meals()
 st.divider()
 st.caption(f"Last GSheets sync: **{get_last_gsheets_sync()}**  ·  Rows in log: **{len(df_rows)}**")
+
+with st.expander("Sync with Google Sheets"):
+    st.markdown("Pushes meal log from Upstash → Sheets and reloads food mappings from Sheets → Upstash.")
+    if st.button("Sync with Google Sheets"):
+        df2 = cached_load_meals()
+        ok1, msg1 = force_sync_to_gsheets(df2)
+        if ok1:
+            save_last_gsheets_sync(datetime.now().isoformat(timespec="seconds"))
+            st.success("Meals synced to Google Sheets.")
+        else:
+            st.error(f"Meal sync failed: {msg1}")
+        ok2, msg2 = force_load_food_mappings_from_gsheets()
+        if ok2:
+            st.success("Food mappings reloaded.")
+        else:
+            st.error(f"Mappings reload failed: {msg2}")
+        st.rerun()
