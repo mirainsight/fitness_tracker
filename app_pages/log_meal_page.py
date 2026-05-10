@@ -15,7 +15,7 @@ from utils.food_category_storage import (
     add_food_subcategory,
     get_effective_food_subcategories,
 )
-from utils.food_mapping_storage import force_load_food_mappings_from_gsheets, is_food_mappings_gsheets_configured
+from utils.food_mapping_storage import force_load_food_mappings_from_gsheets
 from utils.meal_schema import MealInput
 from utils.meal_storage import (
     force_sync_to_gsheets,
@@ -37,22 +37,9 @@ from utils.upstash_storage import get_last_gsheets_sync, save_last_gsheets_sync,
 load_maincss(paths["maincss"])
 preload_upstash_session_caches()
 
-
-def _peek_meal_name(json_str: str) -> str:
-    try:
-        return str(json.loads(json_str).get("meal_name", "")).strip()
-    except Exception:
-        return ""
-
-
 st.title("Log meal")
-st.caption(
-    "Nutrition JSON + **category / subcategory** (mapped from your sheet keywords, like finance transactions). "
-    "JSON can include optional `category` / `subcategory` to override the pickers."
-)
 
 sample = """{
-  "meal_name": "Grilled chicken rice bowl",
   "serving_size": "1 bowl",
   "calories_kcal": 520,
   "macronutrients": {
@@ -84,21 +71,38 @@ mappings = cached_food_mappings_dict()
 effective = get_effective_food_subcategories()
 categories = sorted(effective.keys())
 
-meal_name_preview = _peek_meal_name(st.session_state.fitness_meal_json)
-prev_peek = st.session_state.get("_fitness_meal_name_peek", "")
-if meal_name_preview != prev_peek:
-    st.session_state["_fitness_meal_name_peek"] = meal_name_preview
-    inferred = infer_meal_category(meal_name_preview, mappings) if meal_name_preview else None
-    st.session_state["_last_inferred_meal_result"] = inferred
-    st.session_state.pop("fitness_log_cat", None)
-    st.session_state.pop("fitness_log_sub", None)
-    if inferred:
-        _, (cat_inf, sub_inf) = inferred
-        if cat_inf in categories:
-            st.session_state["fitness_log_cat"] = cat_inf
-            if sub_inf in effective.get(cat_inf, []):
-                st.session_state["fitness_log_sub"] = sub_inf
+# --- Meal name field (drives inference, like description in financial tracker) ---
+df = cached_load_meals()
+df_hash = meals_df_hash(df)
+past_meal_names = cached_get_meal_names_list(df_hash)
 
+meal_name = st.selectbox(
+    "Meal name",
+    options=[""] + past_meal_names,
+    key="fitness_meal_name_input",
+    placeholder="e.g. Nasi lemak, Wantan mee, Grilled chicken...",
+    help="Select a past meal to auto-fill, or type a new one.",
+    accept_new_options=True,
+)
+
+# Run 3-tier inference when meal name changes (same pattern as financial tracker)
+if meal_name and meal_name.strip():
+    last_inferred_name = st.session_state.get("_last_inferred_meal_name", "")
+    if meal_name != last_inferred_name:
+        inferred = infer_meal_category(meal_name, mappings)
+        st.session_state["_last_inferred_meal_result"] = inferred
+        if inferred:
+            _, (cat_inf, sub_inf) = inferred
+            if cat_inf in categories:
+                st.session_state["fitness_log_cat"] = cat_inf
+                if sub_inf in effective.get(cat_inf, []):
+                    st.session_state["fitness_log_sub"] = sub_inf
+        st.session_state["_last_inferred_meal_name"] = meal_name
+else:
+    st.session_state["_last_inferred_meal_name"] = ""
+    st.session_state["_last_inferred_meal_result"] = None
+
+# Category / subcategory dropdowns
 if "fitness_log_cat" not in st.session_state:
     st.session_state.fitness_log_cat = categories[0] if categories else ""
 cat = st.selectbox("Category", categories, key="fitness_log_cat")
@@ -108,6 +112,7 @@ if st.session_state.get("fitness_log_sub") not in subs:
 sub_ix = subs.index(st.session_state.fitness_log_sub) if st.session_state.fitness_log_sub in subs else 0
 sub = st.selectbox("Subcategory", subs, index=sub_ix, key="fitness_log_sub")
 
+# Inference hint + Wrong? Forget
 inferred = st.session_state.get("_last_inferred_meal_result")
 if inferred:
     source, (cat_inf, sub_inf) = inferred
@@ -117,10 +122,10 @@ if inferred:
         st.caption(f"✨ Inferred ({source_label}): **{cat_inf}** → **{sub_inf}**")
     with col_forget:
         if st.button("Wrong? Forget", key="forget_meal_inference", help="Clear saved mapping for this meal name"):
-            delete_learned_mapping(meal_name_preview)
+            delete_learned_mapping(meal_name)
             invalidate_inference_cache()
             st.session_state["_last_inferred_meal_result"] = None
-            st.session_state["_fitness_meal_name_peek"] = ""
+            st.session_state["_last_inferred_meal_name"] = ""
             st.rerun()
 
 with st.expander("Add taxonomy (optional)"):
@@ -140,27 +145,25 @@ with st.expander("Add taxonomy (optional)"):
         else:
             st.warning("Duplicate or invalid.")
 
-df = cached_load_meals()
-df_hash = meals_df_hash(df)
-past_meal_names = cached_get_meal_names_list(df_hash)
-
+# Template fill — sets meal name field + nutrition JSON
 tcol1, tcol2 = st.columns([4, 1])
 with tcol1:
     template_name = st.selectbox(
-        "Template from past meal (optional)",
+        "Fill from past meal (optional)",
         options=[""] + past_meal_names,
         key="fitness_meal_template",
-        help="Most recent row with that meal name (includes category if saved).",
+        help="Fills nutrition JSON and meal name from a previous entry.",
     )
 with tcol2:
     st.write("")
-    if st.button("Fill JSON from template", disabled=not bool(template_name)):
+    if st.button("Fill", disabled=not bool(template_name)):
         m = df[df["MEAL_NAME"].astype(str).str.strip() == str(template_name).strip()]
         if not m.empty:
             m_sorted = m.assign(_lg=pd.to_datetime(m["LOGGED_AT"], errors="coerce")).sort_values(
                 "_lg", ascending=False, na_position="last"
             )
             st.session_state.fitness_meal_json = meal_row_to_json_text(m_sorted.iloc[0])
+            st.session_state.fitness_meal_name_input = str(template_name).strip()
             st.rerun()
 
 with st.expander("Diagnostics"):
@@ -170,38 +173,43 @@ with st.expander("Diagnostics"):
 
 meal_date = st.date_input("Meal date", value=date.today())
 st.text_area(
-    "Meal JSON",
+    "Nutrition JSON",
     height=280,
-    placeholder="Paste JSON here…",
+    placeholder="Paste nutrition JSON here…",
     key="fitness_meal_json",
 )
 
 add_meal = st.button("Add meal", type="primary")
 
 if add_meal:
-    try:
-        meal = MealInput.model_validate_json(st.session_state.fitness_meal_json)
-        jc = (meal.category or "").strip()
-        js = (meal.subcategory or "").strip()
-        if jc and js:
-            res_cat, res_sub = jc, js
-        else:
-            res_cat = (st.session_state.get("fitness_log_cat") or "").strip()
-            res_sub = (st.session_state.get("fitness_log_sub") or "").strip()
-        if res_cat and not res_sub:
-            res_sub = (effective.get(res_cat, ["Other"]) or ["Other"])[0]
-        row = meal_input_to_row(meal, meal_date.isoformat(), category=res_cat, subcategory=res_sub)
-        df_new = pd.concat([cached_load_meals(), pd.DataFrame([row])], ignore_index=True)
-        save_meals(df_new)
-        invalidate_meal_caches()
-        if meal.meal_name and res_cat and res_sub:
-            save_learned_mapping(meal.meal_name, res_cat, res_sub)
-        st.session_state.fitness_meal_json = sample
-        st.toast(f"Logged {meal.meal_name} — {meal.calories_kcal:.0f} kcal", icon="✅")
-        st.rerun()
-    except ValidationError as e:
-        st.error("JSON does not match the expected meal schema.")
-        st.json(e.errors())
+    meal_name_val = (st.session_state.get("fitness_meal_name_input") or "").strip()
+    if not meal_name_val:
+        st.error("Please enter a meal name.")
+    else:
+        try:
+            meal = MealInput.model_validate_json(st.session_state.fitness_meal_json)
+            jc = (meal.category or "").strip()
+            js = (meal.subcategory or "").strip()
+            if jc and js:
+                res_cat, res_sub = jc, js
+            else:
+                res_cat = (st.session_state.get("fitness_log_cat") or "").strip()
+                res_sub = (st.session_state.get("fitness_log_sub") or "").strip()
+            if res_cat and not res_sub:
+                res_sub = (effective.get(res_cat, ["Other"]) or ["Other"])[0]
+            row = meal_input_to_row(meal, meal_date.isoformat(), meal_name=meal_name_val, category=res_cat, subcategory=res_sub)
+            df_new = pd.concat([cached_load_meals(), pd.DataFrame([row])], ignore_index=True)
+            save_meals(df_new)
+            invalidate_meal_caches()
+            if res_cat and res_sub:
+                save_learned_mapping(meal_name_val, res_cat, res_sub)
+            st.session_state.fitness_meal_json = sample
+            st.session_state.fitness_meal_name_input = ""
+            st.toast(f"Logged {meal_name_val} — {meal.calories_kcal:.0f} kcal", icon="✅")
+            st.rerun()
+        except ValidationError as e:
+            st.error("JSON does not match the expected schema.")
+            st.json(e.errors())
 
 df_rows = cached_load_meals()
 st.divider()
