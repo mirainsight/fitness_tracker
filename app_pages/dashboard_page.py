@@ -15,7 +15,6 @@ from utils.target_storage import load_targets
 load_maincss(paths["maincss"])
 
 st.title("Dashboard")
-st.caption("Energy and macros over time — mirrors the finance dashboard layout: **at a glance**, **trends**, **breakdown**, **targets**.")
 
 df = cached_load_meals()
 targets = load_targets()
