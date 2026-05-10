@@ -22,7 +22,7 @@ class Micronutrients(BaseModel):
 
 
 class MealInput(BaseModel):
-    meal_name: str = Field(min_length=1)
+    meal_name: str = Field(default="")
     serving_size: str = ""
     calories_kcal: float = Field(gt=0)
     macronutrients: Macronutrients
