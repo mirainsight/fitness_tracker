@@ -54,4 +54,5 @@ MEAL_COLUMNS = [
     "IRON_MG",
     "VITAMIN_C_MG",
     "SOURCE",
+    "COMMENTS",
 ]

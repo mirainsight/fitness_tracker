@@ -105,13 +105,13 @@ def _get_gsheets_client():
 
 
 def _normalize_df(df: pd.DataFrame) -> pd.DataFrame:
-    text_cols = {"MEAL_DATE", "LOGGED_AT", "MEAL_NAME", "SERVING_SIZE", "SOURCE", "CATEGORY", "SUBCATEGORY"}
+    text_cols = {"MEAL_DATE", "LOGGED_AT", "MEAL_NAME", "SERVING_SIZE", "SOURCE", "CATEGORY", "SUBCATEGORY", "COMMENTS"}
     for col in MEAL_COLUMNS:
         if col not in df.columns:
             df[col] = "" if col in text_cols else 0.0
     for col in MEAL_COLUMNS:
         if col in df.columns:
-            if col in ("MEAL_DATE", "LOGGED_AT", "MEAL_NAME", "SERVING_SIZE", "SOURCE", "CATEGORY", "SUBCATEGORY"):
+            if col in ("MEAL_DATE", "LOGGED_AT", "MEAL_NAME", "SERVING_SIZE", "SOURCE", "CATEGORY", "SUBCATEGORY", "COMMENTS"):
                 df[col] = df[col].fillna("").astype(str)
             else:
                 df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
@@ -167,7 +167,7 @@ def _save_to_gsheets(df: pd.DataFrame) -> bool:
                 out[c] = (
                     ""
                     if c
-                    in ("MEAL_DATE", "LOGGED_AT", "MEAL_NAME", "SERVING_SIZE", "SOURCE", "CATEGORY", "SUBCATEGORY")
+                    in ("MEAL_DATE", "LOGGED_AT", "MEAL_NAME", "SERVING_SIZE", "SOURCE", "CATEGORY", "SUBCATEGORY", "COMMENTS")
                     else 0
                 )
         out = out[[c for c in MEAL_COLUMNS if c in out.columns]]
@@ -341,6 +341,7 @@ def meal_input_to_row(
     meal_name: str = "",
     category: str = "",
     subcategory: str = "",
+    comments: str = "",
 ) -> dict[str, Any]:
     micro = meal.micronutrients
     macro = meal.macronutrients
@@ -364,4 +365,5 @@ def meal_input_to_row(
         "IRON_MG": micro.iron_mg if micro else 0,
         "VITAMIN_C_MG": micro.vitamin_c_mg if micro else 0,
         "SOURCE": source,
+        "COMMENTS": comments,
     }

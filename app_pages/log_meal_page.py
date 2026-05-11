@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 from pydantic import ValidationError
 
 from utils.app_utils import load_maincss
@@ -76,7 +77,8 @@ if not st.session_state.get("_fitness_json_initialized"):
     st.session_state.fitness_meal_json = ""
     st.session_state["_fitness_json_initialized"] = True
 elif st.session_state.pop("_fitness_json_reset", False):
-    st.session_state.pop("fitness_meal_json", None)
+    st.session_state.fitness_meal_json = ""
+    st.session_state.fitness_meal_comments = ""
 
 with st.expander("Sample JSON"):
     st.code(
@@ -190,6 +192,11 @@ st.text_area(
     placeholder="Paste nutrition JSON here…",
     key="fitness_meal_json",
 )
+st.text_input(
+    "Comments (optional)",
+    placeholder="e.g. Post-workout, cheat day, estimate…",
+    key="fitness_meal_comments",
+)
 
 add_meal = st.button("Add meal", type="primary")
 
@@ -240,7 +247,8 @@ if add_meal:
             else:
                 if res_cat and not res_sub:
                     res_sub = (effective.get(res_cat, ["Other"]) or ["Other"])[0]
-                row = meal_input_to_row(meal, meal_date.isoformat(), meal_name=meal_name_val, category=res_cat, subcategory=res_sub)
+                comments_val = (st.session_state.get("fitness_meal_comments") or "").strip()
+                row = meal_input_to_row(meal, meal_date.isoformat(), meal_name=meal_name_val, category=res_cat, subcategory=res_sub, comments=comments_val)
                 df_new = pd.concat([cached_load_meals(), pd.DataFrame([row])], ignore_index=True)
                 save_meals(df_new)
                 invalidate_meal_caches()
@@ -248,11 +256,45 @@ if add_meal:
                     save_learned_mapping(meal_name_val, res_cat, res_sub)
                 st.session_state["_fitness_json_reset"] = True
                 st.session_state["_fitness_meal_name_reset"] = True
-                st.toast(f"Logged {meal_name_val} — {meal.calories_kcal:.0f} kcal", icon="✅")
+                st.session_state["_last_added_meal"] = {
+                    "name": meal_name_val,
+                    "calories": meal.calories_kcal,
+                }
                 st.rerun()
         except ValidationError as e:
             st.error("JSON does not match the expected schema.")
             st.json(e.errors())
+
+# --- Celebratory banner ---
+if st.session_state.get("_last_added_meal"):
+    m = st.session_state["_last_added_meal"]
+    components.html("""
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <script>
+        var existingCanvas = parent.document.getElementById('confetti-canvas');
+        if (existingCanvas) { existingCanvas.remove(); }
+        var canvas = parent.document.createElement('canvas');
+        canvas.id = 'confetti-canvas';
+        canvas.style.position = 'fixed';
+        canvas.style.top = '0';
+        canvas.style.left = '0';
+        canvas.style.width = '100%';
+        canvas.style.height = '100%';
+        canvas.style.pointerEvents = 'none';
+        canvas.style.zIndex = '9999';
+        parent.document.body.appendChild(canvas);
+        var myConfetti = confetti.create(canvas, { resize: true });
+        myConfetti({
+            particleCount: 150,
+            spread: 100,
+            origin: { x: 0.5, y: 0.5 },
+            colors: ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff']
+        });
+        setTimeout(function() { myConfetti.reset(); canvas.remove(); }, 3000);
+    </script>
+    """, height=0)
+    st.success(f"**{m['name']}** — **{m['calories']:.0f} kcal** logged!")
+    del st.session_state["_last_added_meal"]
 
 df_rows = cached_load_meals()
 st.divider()
