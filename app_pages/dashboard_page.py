@@ -63,6 +63,51 @@ def _resolve_preset(preset: str) -> tuple[date, date]:
     return dmin, dmax  # All time
 
 
+# ── Today's running total ─────────────────────────────────────────────────────
+_today_intake = float(df_all.loc[df_all["MEAL_DATE"].dt.date == today, "CALORIES_KCAL"].sum())
+_today_base = float(targets.get("base_calories_burned") or 0)
+_today_ex = 0.0
+if not ex_raw.empty:
+    _ex = ex_raw.copy()
+    _ex["EXERCISE_DATE"] = pd.to_datetime(_ex["EXERCISE_DATE"], errors="coerce").dt.date
+    _ex["CALORIES_BURNED"] = pd.to_numeric(_ex["CALORIES_BURNED"], errors="coerce").fillna(0)
+    _today_ex = float(_ex.loc[_ex["EXERCISE_DATE"] == today, "CALORIES_BURNED"].sum())
+_today_burned = _today_base + _today_ex
+_today_net = _today_intake - _today_burned
+
+if _today_burned > 0:
+    if _today_net > 0:
+        _bar_color, _bar_label = "#E63946", "Over"
+    elif _today_net > -400:
+        _bar_color, _bar_label = "#2dc653", "On track"
+    else:
+        _bar_color, _bar_label = "#2E86AB", "Well under"
+    _bar_fill = min(100.0, _today_intake / _today_burned * 100)
+    _net_str = f"net <strong style='color:{_bar_color}'>{_today_net:+,.0f} kcal</strong>"
+else:
+    _bar_color, _bar_label = "#888", ""
+    _bar_fill = min(100.0, _today_intake / 2000 * 100)
+    _net_str = "no burned data set"
+
+_label_html = f"<span style='font-size:0.78rem;color:{_bar_color};font-weight:600;'>{_bar_label}</span>" if _bar_label else ""
+st.markdown(f"""
+<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">
+  <span style="font-size:0.9rem;font-weight:600;">Today</span>
+  {_label_html}
+</div>
+<div style="font-size:2.2rem;font-weight:700;line-height:1.1;margin-bottom:2px;">
+  {_today_intake:,.0f}&thinsp;<span style="font-size:1rem;font-weight:400;color:#aaa;">kcal in</span>
+</div>
+<div style="font-size:0.78rem;color:#888;margin-bottom:8px;">
+  {_today_burned:,.0f} kcal burned &middot; {_net_str}
+</div>
+<div style="background:#333;border-radius:6px;height:8px;width:100%;overflow:hidden;">
+  <div style="background:{_bar_color};height:100%;width:{_bar_fill:.1f}%;border-radius:6px;"></div>
+</div>
+""", unsafe_allow_html=True)
+
+st.divider()
+
 # --- Time period selector ---
 _PRESETS = ["This month", "Last month", "Last 3 months", "Last 6 months", "All time", "Custom"]
 preset = st.segmented_control("Time period", _PRESETS, default="This month", key="dash_preset")
