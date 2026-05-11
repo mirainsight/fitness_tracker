@@ -94,9 +94,8 @@ def display_sidebar_monthly_fitness_summary() -> None:
             st.caption("No meals with valid dates.")
             return
 
-        for c in ("CALORIES_KCAL", "PROTEIN_G"):
-            if c in df.columns:
-                df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
+        if "CALORIES_KCAL" in df.columns:
+            df["CALORIES_KCAL"] = pd.to_numeric(df["CALORIES_KCAL"], errors="coerce").fillna(0)
 
         now = dt.datetime.now(_SIDEBAR_TZ)
         month_mask = (df["MEAL_DATE"].dt.month == now.month) & (df["MEAL_DATE"].dt.year == now.year)
@@ -106,9 +105,8 @@ def display_sidebar_monthly_fitness_summary() -> None:
             return
 
         total_kcal = float(month_df["CALORIES_KCAL"].sum()) if "CALORIES_KCAL" in month_df.columns else 0.0
-        total_protein = float(month_df["PROTEIN_G"].sum()) if "PROTEIN_G" in month_df.columns else 0.0
 
-        # Average kcal per calendar day spanned by logged data this month (same idea as avg daily spend span).
+        # Average kcal per calendar day spanned by logged data this month
         d_min = month_df["MEAL_DATE"].min().date()
         d_max = month_df["MEAL_DATE"].max().date()
         month_end = now.date()
@@ -116,14 +114,39 @@ def display_sidebar_monthly_fitness_summary() -> None:
         days = max(1, (clip_max - d_min).days + 1)
         avg_kcal = total_kcal / days
 
-        st.metric("Total kcal", f"{total_kcal:,.0f}", help="Sum of kcal for meals dated this month")
-        st.metric("Avg kcal / day", f"{avg_kcal:,.0f}", help=f"Total ÷ days from first logged day to today ({days} d)")
-        st.metric("Total protein (g)", f"{total_protein:,.0f}", help="Protein sum this month")
+        # Days on track this month
+        _daily_m = (month_df.groupby(month_df["MEAL_DATE"].dt.date)["CALORIES_KCAL"].sum()
+                    if "CALORIES_KCAL" in month_df.columns else pd.Series(dtype=float))
+        _logged_days_m = len(_daily_m)
+        _base_b = float(_targets.get("base_calories_burned") or 0)
+        _ex_by_day_m: dict = {}
+        if not _ex_raw.empty:
+            _ex_m = _ex_raw.copy()
+            _ex_m["EXERCISE_DATE"] = pd.to_datetime(_ex_m["EXERCISE_DATE"], errors="coerce").dt.date
+            _ex_m["CALORIES_BURNED"] = pd.to_numeric(_ex_m["CALORIES_BURNED"], errors="coerce").fillna(0)
+            _ex_m = _ex_m[_ex_m["EXERCISE_DATE"].apply(lambda d: d.month == now.month and d.year == now.year)]
+            _ex_by_day_m = _ex_m.groupby("EXERCISE_DATE")["CALORIES_BURNED"].sum().to_dict()
 
-        targets = load_targets()
-        t_cal = float(targets.get("calories_kcal") or 0)
+        t_cal = float(_targets.get("calories_kcal") or 0)
+        if _base_b > 0 or _ex_by_day_m:
+            _on_track_m = sum(
+                1 for day, intake in _daily_m.items()
+                if float(intake) <= _base_b + _ex_by_day_m.get(day, 0)
+            )
+            _otk_help = "Days this month where net kcal ≤ 0"
+        elif t_cal > 0:
+            _on_track_m = int((_daily_m <= t_cal).sum())
+            _otk_help = f"Days where intake ≤ {t_cal:.0f} kcal target"
+        else:
+            _on_track_m, _otk_help = None, ""
+
+        if _on_track_m is not None and _logged_days_m > 0:
+            _otk_pct = _on_track_m / _logged_days_m * 100
+            st.metric("Days on track", f"{_on_track_m} / {_logged_days_m}", f"{_otk_pct:.0f}%", help=_otk_help)
+
+        st.metric("Avg kcal / day", f"{avg_kcal:,.0f}", help=f"Total ÷ days from first logged day to today ({days} d)")
+
         if t_cal > 0:
-            # Days from month start through today (cap to month end).
             month_start = now.date().replace(day=1)
             elapsed = max(1, (month_end - month_start).days + 1)
             budget_so_far = t_cal * elapsed
