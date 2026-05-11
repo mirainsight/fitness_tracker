@@ -13,6 +13,7 @@ import pandas as pd
 import streamlit as st
 from zoneinfo import ZoneInfo
 
+from utils.exercise_storage import load_exercises
 from utils.meal_streamlit_cache import cached_load_meals
 from utils.target_storage import load_targets
 
@@ -23,6 +24,62 @@ _SIDEBAR_TZ = ZoneInfo("Asia/Kuala_Lumpur")
 def display_sidebar_monthly_fitness_summary() -> None:
     """At-a-glance nutrition metrics for the current calendar month in the sidebar."""
     with st.sidebar:
+        # --- Today's net calories ---
+        now_tz = dt.datetime.now(_SIDEBAR_TZ)
+        today = now_tz.date()
+
+        _df_all = cached_load_meals()
+        _today_intake = 0.0
+        if _df_all is not None and not _df_all.empty and "MEAL_DATE" in _df_all.columns:
+            _df_t = _df_all.copy()
+            _df_t["MEAL_DATE"] = pd.to_datetime(_df_t["MEAL_DATE"], errors="coerce")
+            _df_t["CALORIES_KCAL"] = pd.to_numeric(_df_t.get("CALORIES_KCAL", 0), errors="coerce").fillna(0)
+            _today_intake = float(_df_t.loc[_df_t["MEAL_DATE"].dt.date == today, "CALORIES_KCAL"].sum())
+
+        _targets = load_targets()
+        _today_base = float(_targets.get("base_calories_burned") or 0)
+        _today_ex = 0.0
+        _ex_raw = load_exercises()
+        if not _ex_raw.empty:
+            _ex = _ex_raw.copy()
+            _ex["EXERCISE_DATE"] = pd.to_datetime(_ex["EXERCISE_DATE"], errors="coerce").dt.date
+            _ex["CALORIES_BURNED"] = pd.to_numeric(_ex["CALORIES_BURNED"], errors="coerce").fillna(0)
+            _today_ex = float(_ex.loc[_ex["EXERCISE_DATE"] == today, "CALORIES_BURNED"].sum())
+        _today_burned = _today_base + _today_ex
+        _today_net = _today_intake - _today_burned
+
+        if _today_burned > 0:
+            if _today_net > 0:
+                _bar_color, _bar_label = "#E63946", "Over"
+            elif _today_net > -400:
+                _bar_color, _bar_label = "#2dc653", "On track"
+            else:
+                _bar_color, _bar_label = "#2E86AB", "Well under"
+            _bar_fill = min(100.0, _today_intake / _today_burned * 100)
+            _net_str = f"net <strong style='color:{_bar_color}'>{_today_net:+,.0f} kcal</strong>"
+        else:
+            _bar_color, _bar_label = "#888", ""
+            _bar_fill = min(100.0, _today_intake / 2000 * 100)
+            _net_str = "no burned data set"
+
+        _label_html = f"<span style='font-size:0.75rem;color:{_bar_color};font-weight:600;'>{_bar_label}</span>" if _bar_label else ""
+        st.markdown(f"""
+<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;">
+  <span style="font-size:0.82rem;font-weight:600;">Today</span>
+  {_label_html}
+</div>
+<div style="font-size:1.6rem;font-weight:700;line-height:1.1;margin-bottom:1px;">
+  {_today_intake:,.0f}&thinsp;<span style="font-size:0.85rem;font-weight:400;color:#aaa;">kcal in</span>
+</div>
+<div style="font-size:0.72rem;color:#888;margin-bottom:6px;">
+  {_today_burned:,.0f} burned &middot; {_net_str}
+</div>
+<div style="background:#333;border-radius:4px;height:6px;width:100%;overflow:hidden;">
+  <div style="background:{_bar_color};height:100%;width:{_bar_fill:.1f}%;border-radius:4px;"></div>
+</div>
+""", unsafe_allow_html=True)
+        st.divider()
+
         st.caption("📊 This month")
         # Same loading path as Log meal / Past meals / Dashboard so the sidebar never lags the ledger.
         df = cached_load_meals()
