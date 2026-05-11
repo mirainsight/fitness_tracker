@@ -129,6 +129,13 @@ else:
 _ADD_NEW_CAT = "➕ Add new category"
 _ADD_NEW_SUB = "➕ Add new subcategory"
 
+# Apply deferred category/subcategory selection (must run before selectboxes render)
+_pending_cat = st.session_state.pop("_pending_fitness_cat_ui", None)
+if _pending_cat:
+    st.session_state["fitness_log_cat"] = _pending_cat["cat"]
+    if "sub" in _pending_cat:
+        st.session_state["fitness_log_sub"] = _pending_cat["sub"]
+
 cat_options = categories + [_ADD_NEW_CAT]
 if "fitness_log_cat" not in st.session_state:
     st.session_state.fitness_log_cat = categories[0] if categories else ""
@@ -226,8 +233,7 @@ if add_meal:
                     add_food_category(new_cat)
                     add_food_subcategory(new_cat, new_sub)
                     invalidate_inference_cache()
-                    st.session_state.fitness_log_cat = new_cat
-                    st.session_state.fitness_log_sub = new_sub
+                    st.session_state["_pending_fitness_cat_ui"] = {"cat": new_cat, "sub": new_sub}
                     res_cat, res_sub = new_cat, new_sub
             elif sub_val == _ADD_NEW_SUB:
                 new_sub = (st.session_state.get("fitness_new_sub_inline") or "").strip()
@@ -236,7 +242,7 @@ if add_meal:
                 else:
                     add_food_subcategory(cat_val, new_sub)
                     invalidate_inference_cache()
-                    st.session_state.fitness_log_sub = new_sub
+                    st.session_state["_pending_fitness_cat_ui"] = {"cat": cat_val, "sub": new_sub}
                     res_cat, res_sub = cat_val, new_sub
             else:
                 res_cat = cat_val.strip()
