@@ -123,6 +123,7 @@ def display_sidebar_monthly_fitness_summary() -> None:
         if not _ex_raw.empty:
             _ex_m = _ex_raw.copy()
             _ex_m["EXERCISE_DATE"] = pd.to_datetime(_ex_m["EXERCISE_DATE"], errors="coerce").dt.date
+            _ex_m = _ex_m.dropna(subset=["EXERCISE_DATE"])
             _ex_m["CALORIES_BURNED"] = pd.to_numeric(_ex_m["CALORIES_BURNED"], errors="coerce").fillna(0)
             _ex_m = _ex_m[_ex_m["EXERCISE_DATE"].apply(lambda d: d.month == now.month and d.year == now.year)]
             _ex_by_day_m = _ex_m.groupby("EXERCISE_DATE")["CALORIES_BURNED"].sum().to_dict()
