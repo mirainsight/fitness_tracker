@@ -79,6 +79,7 @@ if not st.session_state.get("_fitness_json_initialized"):
 elif st.session_state.pop("_fitness_json_reset", False):
     st.session_state.fitness_meal_json = ""
     st.session_state.fitness_meal_comments = ""
+    st.session_state.fitness_log_brand = ""
 
 with st.expander("Sample JSON"):
     st.code(
@@ -118,11 +119,13 @@ if meal_name and meal_name.strip():
         inferred = infer_meal_category(meal_name, mappings)
         st.session_state["_last_inferred_meal_result"] = inferred
         if inferred:
-            _, (cat_inf, sub_inf) = inferred
+            _, (cat_inf, sub_inf, brand_inf) = inferred
             if cat_inf in categories:
                 st.session_state["fitness_log_cat"] = cat_inf
                 if sub_inf in effective.get(cat_inf, []):
                     st.session_state["fitness_log_sub"] = sub_inf
+            if brand_inf:
+                st.session_state["fitness_log_brand"] = brand_inf
         st.session_state["_last_inferred_meal_name"] = meal_name
 else:
     st.session_state["_last_inferred_meal_name"] = ""
@@ -157,14 +160,32 @@ else:
     if sub == _ADD_NEW_SUB:
         st.text_input("New subcategory name", key="fitness_new_sub_inline", placeholder="e.g. Smoothie")
 
+# Brand / shop field
+past_brands = (
+    sorted(df[df["BRAND"].astype(str).str.strip() != ""]["BRAND"].dropna().unique())
+    if "BRAND" in df.columns
+    else []
+)
+st.selectbox(
+    "Brand / Shop (optional)",
+    options=[""] + past_brands,
+    key="fitness_log_brand",
+    placeholder="e.g. McDonald's, MyVegas, Mama's stall, Homemade…",
+    help="Restaurant, brand, stall, or shop the food came from.",
+    accept_new_options=True,
+)
+
 # Inference hint + Wrong? Forget
 inferred = st.session_state.get("_last_inferred_meal_result")
 if inferred:
-    source, (cat_inf, sub_inf) = inferred
+    source, (cat_inf, sub_inf, brand_inf) = inferred
     source_label = {"learned": "saved", "word_scores": "similar", "sheet": "sheet"}.get(source, source)
+    hint = f"✨ Inferred ({source_label}): **{cat_inf}** → **{sub_inf}**"
+    if brand_inf:
+        hint += f" · **{brand_inf}**"
     col_infer, col_forget = st.columns([3, 1])
     with col_infer:
-        st.caption(f"✨ Inferred ({source_label}): **{cat_inf}** → **{sub_inf}**")
+        st.caption(hint)
     with col_forget:
         if st.button("Wrong? Forget", key="forget_meal_inference", help="Clear saved mapping for this meal name"):
             delete_learned_mapping(meal_name)
@@ -200,12 +221,20 @@ with tcol3:
             m_sorted = m.assign(_lg=pd.to_datetime(m["LOGGED_AT"], errors="coerce")).sort_values(
                 "_lg", ascending=False, na_position="last"
             )
-            st.session_state.fitness_meal_json = meal_row_to_json_text(
+            st.session_state["_fitness_meal_json_pending"] = meal_row_to_json_text(
                 m_sorted.iloc[0], multiplier=serving_multiplier
             )
             st.session_state["_fitness_meal_name_pending"] = str(template_name).strip()
+            if "BRAND" in m_sorted.columns:
+                brand_from_template = str(m_sorted.iloc[0].get("BRAND", "") or "").strip()
+                if brand_from_template:
+                    st.session_state["fitness_log_brand"] = brand_from_template
             st.rerun()
 
+
+# Apply deferred nutrition JSON from template fill (must run before the text_area renders)
+if "_fitness_meal_json_pending" in st.session_state:
+    st.session_state.fitness_meal_json = st.session_state.pop("_fitness_meal_json_pending")
 
 meal_date = st.date_input("Meal date", value=date.today())
 st.text_area(
@@ -234,6 +263,7 @@ if add_meal:
 
             cat_val = st.session_state.get("fitness_log_cat", "")
             sub_val = st.session_state.get("fitness_log_sub", "")
+            brand_val = (st.session_state.get("fitness_log_brand") or "").strip()
             _error = None
             res_cat = res_sub = ""
 
@@ -269,12 +299,16 @@ if add_meal:
                 if res_cat and not res_sub:
                     res_sub = (effective.get(res_cat, ["Other"]) or ["Other"])[0]
                 comments_val = (st.session_state.get("fitness_meal_comments") or "").strip()
-                row = meal_input_to_row(meal, meal_date.isoformat(), meal_name=meal_name_val, category=res_cat, subcategory=res_sub, comments=comments_val)
+                row = meal_input_to_row(
+                    meal, meal_date.isoformat(),
+                    meal_name=meal_name_val, category=res_cat, subcategory=res_sub,
+                    brand=brand_val, comments=comments_val,
+                )
                 df_new = pd.concat([cached_load_meals(), pd.DataFrame([row])], ignore_index=True)
                 save_meals(df_new)
                 invalidate_meal_caches()
                 if res_cat and res_sub:
-                    save_learned_mapping(meal_name_val, res_cat, res_sub)
+                    save_learned_mapping(meal_name_val, res_cat, res_sub, brand_val)
                 st.session_state["_fitness_json_reset"] = True
                 st.session_state["_fitness_meal_name_reset"] = True
                 st.session_state["_last_added_meal"] = {
@@ -398,7 +432,7 @@ with st.expander("Rename or remove categories", expanded=False):
                                 updated = False
                                 for mk, cs in list(learned.items()):
                                     if isinstance(cs, (list, tuple)) and len(cs) >= 2 and cs[0] == sel_cat:
-                                        learned[mk] = [new_name.strip(), cs[1]]
+                                        learned[mk] = [new_name.strip(), cs[1]] + ([cs[2]] if len(cs) > 2 else [""])
                                         updated = True
                                 if updated:
                                     save_learned_mappings_bulk(learned)
@@ -451,7 +485,7 @@ with st.expander("Rename or remove categories", expanded=False):
                                 updated = False
                                 for mk, cs in list(learned.items()):
                                     if isinstance(cs, (list, tuple)) and len(cs) >= 2 and cs[0] == r_cat and cs[1] == r_sub:
-                                        learned[mk] = [r_cat, new_sub_rename.strip()]
+                                        learned[mk] = [r_cat, new_sub_rename.strip()] + ([cs[2]] if len(cs) > 2 else [""])
                                         updated = True
                                 if updated:
                                     save_learned_mappings_bulk(learned)
