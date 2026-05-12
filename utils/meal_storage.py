@@ -105,13 +105,13 @@ def _get_gsheets_client():
 
 
 def _normalize_df(df: pd.DataFrame) -> pd.DataFrame:
-    text_cols = {"MEAL_DATE", "LOGGED_AT", "MEAL_NAME", "SERVING_SIZE", "SOURCE", "CATEGORY", "SUBCATEGORY", "COMMENTS"}
+    text_cols = {"MEAL_DATE", "LOGGED_AT", "MEAL_NAME", "SERVING_SIZE", "SOURCE", "CATEGORY", "SUBCATEGORY", "BRAND", "COMMENTS"}
     for col in MEAL_COLUMNS:
         if col not in df.columns:
             df[col] = "" if col in text_cols else 0.0
     for col in MEAL_COLUMNS:
         if col in df.columns:
-            if col in ("MEAL_DATE", "LOGGED_AT", "MEAL_NAME", "SERVING_SIZE", "SOURCE", "CATEGORY", "SUBCATEGORY", "COMMENTS"):
+            if col in ("MEAL_DATE", "LOGGED_AT", "MEAL_NAME", "SERVING_SIZE", "SOURCE", "CATEGORY", "SUBCATEGORY", "BRAND", "COMMENTS"):
                 df[col] = df[col].fillna("").astype(str)
             else:
                 df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
@@ -167,7 +167,7 @@ def _save_to_gsheets(df: pd.DataFrame) -> bool:
                 out[c] = (
                     ""
                     if c
-                    in ("MEAL_DATE", "LOGGED_AT", "MEAL_NAME", "SERVING_SIZE", "SOURCE", "CATEGORY", "SUBCATEGORY", "COMMENTS")
+                    in ("MEAL_DATE", "LOGGED_AT", "MEAL_NAME", "SERVING_SIZE", "SOURCE", "CATEGORY", "SUBCATEGORY", "BRAND", "COMMENTS")
                     else 0
                 )
         out = out[[c for c in MEAL_COLUMNS if c in out.columns]]
@@ -347,6 +347,7 @@ def meal_input_to_row(
     meal_name: str = "",
     category: str = "",
     subcategory: str = "",
+    brand: str = "",
     comments: str = "",
 ) -> dict[str, Any]:
     micro = meal.micronutrients
@@ -358,6 +359,7 @@ def meal_input_to_row(
         "MEAL_NAME": meal_name or meal.meal_name or "",
         "CATEGORY": category or "",
         "SUBCATEGORY": subcategory or "",
+        "BRAND": brand or "",
         "SERVING_SIZE": meal.serving_size or "",
         "CALORIES_KCAL": meal.calories_kcal,
         "PROTEIN_G": macro.protein_g,

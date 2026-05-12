@@ -320,7 +320,47 @@ if "CATEGORY" in d.columns:
     st.plotly_chart(fig_cat_hm, use_container_width=True)
     st.divider()
 
-# ── Section 5: Top meals ──────────────────────────────────────────────────────
+# ── Section 5: Brands & shops ─────────────────────────────────────────────────
+if "BRAND" in d.columns:
+    brand_data = d[d["BRAND"].astype(str).str.strip() != ""].copy()
+    brand_data["_brand"] = brand_data["BRAND"].astype(str).str.strip()
+    if not brand_data.empty:
+        st.subheader("🏪 Brands & shops")
+        by_brand = (
+            brand_data.groupby("_brand", as_index=False)
+            .agg(meals=("MEAL_NAME", "count"), kcal=("CALORIES_KCAL", "sum"))
+        )
+        by_brand["avg_kcal"] = (by_brand["kcal"] / by_brand["meals"]).round(0)
+
+        bcol1, bcol2 = st.columns(2)
+        with bcol1:
+            st.markdown("**Visits by brand / shop**")
+            fig_brand_freq = px.bar(
+                by_brand.sort_values("meals", ascending=False).head(15),
+                x="meals", y="_brand", orientation="h",
+                labels={"meals": "Meals logged", "_brand": ""},
+            )
+            fig_brand_freq.update_layout(yaxis={"categoryorder": "total ascending"})
+            st.plotly_chart(fig_brand_freq, use_container_width=True)
+        with bcol2:
+            st.markdown("**Calories by brand / shop**")
+            fig_brand_kcal = px.bar(
+                by_brand.sort_values("kcal", ascending=False).head(15),
+                x="kcal", y="_brand", orientation="h",
+                labels={"kcal": "Total kcal", "_brand": ""},
+            )
+            fig_brand_kcal.update_layout(yaxis={"categoryorder": "total ascending"})
+            st.plotly_chart(fig_brand_kcal, use_container_width=True)
+
+        st.dataframe(
+            by_brand.sort_values("meals", ascending=False)
+            .rename(columns={"_brand": "Brand / Shop", "meals": "Meals", "kcal": "Total kcal", "avg_kcal": "Avg kcal / meal"}),
+            use_container_width=True,
+            hide_index=True,
+        )
+        st.divider()
+
+# ── Section 6: Top meals ──────────────────────────────────────────────────────
 st.subheader("🍳 Where the calories come from")
 top = (
     d.groupby("MEAL_NAME", as_index=False)
@@ -334,7 +374,7 @@ st.plotly_chart(fig_bar, use_container_width=True)
 
 st.divider()
 
-# ── Section 6: Monthly summary ────────────────────────────────────────────────
+# ── Section 7: Monthly summary ────────────────────────────────────────────────
 st.subheader("📅 Monthly summary")
 df_all["ym"] = df_all["MEAL_DATE"].dt.strftime("%Y-%m")
 monthly_rows = []
@@ -354,7 +394,7 @@ st.dataframe(monthly_df, use_container_width=True, hide_index=True)
 
 st.divider()
 
-# ── Section 7: Targets snapshot ───────────────────────────────────────────────
+# ── Section 8: Targets snapshot ───────────────────────────────────────────────
 st.subheader("🎯 Targets snapshot")
 t_na = float(targets.get("sodium_mg_max") or 0)
 c1, c2, c3 = st.columns(3)

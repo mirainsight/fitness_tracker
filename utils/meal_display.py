@@ -27,11 +27,11 @@ def prepare_meals_display_df(df: pd.DataFrame, *, sort_mode: str) -> pd.DataFram
     else:
         df_display["LOGGED_AT"] = ""
 
-    text_cols = {"MEAL_NAME", "SERVING_SIZE", "SOURCE", "MEAL_DATE", "LOGGED_AT", "CATEGORY", "SUBCATEGORY"}
+    text_cols = {"MEAL_NAME", "SERVING_SIZE", "SOURCE", "MEAL_DATE", "LOGGED_AT", "CATEGORY", "SUBCATEGORY", "BRAND", "COMMENTS"}
     num_cols = [c for c in MEAL_COLUMNS if c not in text_cols]
     for col in MEAL_COLUMNS:
         if col not in df_display.columns:
-            df_display[col] = "" if col in {"MEAL_NAME", "SERVING_SIZE", "SOURCE", "CATEGORY", "SUBCATEGORY"} else 0
+            df_display[col] = "" if col in {"MEAL_NAME", "SERVING_SIZE", "SOURCE", "CATEGORY", "SUBCATEGORY", "BRAND", "COMMENTS"} else 0
     for col in num_cols:
         if col in df_display.columns:
             df_display[col] = pd.to_numeric(df_display[col], errors="coerce").fillna(0)

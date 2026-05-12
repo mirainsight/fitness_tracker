@@ -41,6 +41,7 @@ MEAL_COLUMNS = [
     "MEAL_NAME",
     "CATEGORY",
     "SUBCATEGORY",
+    "BRAND",
     "SERVING_SIZE",
     "CALORIES_KCAL",
     "PROTEIN_G",

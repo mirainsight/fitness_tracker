@@ -80,12 +80,12 @@ def load_learned_mappings() -> dict:
     return learned
 
 
-def save_learned_mapping(meal_name: str, category: str, subcategory: str) -> None:
+def save_learned_mapping(meal_name: str, category: str, subcategory: str, brand: str = "") -> None:
     if not meal_name or not meal_name.strip():
         return
     learned = load_learned_mappings()
     key = meal_name.lower().strip()
-    learned[key] = [category, subcategory]
+    learned[key] = [category, subcategory, brand]
     _save_learned_to_storage(learned)
     if hasattr(st, "session_state"):
         st.session_state[_CACHE_LEARNED] = learned
@@ -144,10 +144,10 @@ def _rebuild_word_scores() -> None:
     learned = load_learned_mappings()
     effective = _get_effective_subs_cached()
     word_scores: dict[str, dict[str, dict[str, int]]] = {}
-    for name, cat_sub in learned.items():
-        if not isinstance(cat_sub, (list, tuple)) or len(cat_sub) < 2:
+    for name, entry in learned.items():
+        if not isinstance(entry, (list, tuple)) or len(entry) < 2:
             continue
-        cat, sub = cat_sub[0], cat_sub[1]
+        cat, sub = entry[0], entry[1]
         if not cat or not sub or cat not in effective or sub not in effective.get(cat, []):
             continue
         for word in _split_words(name):
@@ -206,7 +206,7 @@ def infer_meal_category(
     meal_name: str, mappings: dict[str, list[str]]
 ) -> Optional[Tuple[str, tuple]]:
     """
-    3-tier inference. Returns (source, (category, subcategory)) or None.
+    3-tier inference. Returns (source, (category, subcategory, brand)) or None.
     source is one of: 'learned', 'word_scores', 'sheet'
     """
     if not meal_name or not meal_name.strip():
@@ -217,19 +217,22 @@ def infer_meal_category(
     # Tier 1: learned mappings (exact match)
     learned = load_learned_mappings()
     if text in learned:
-        cat, sub = learned[text]
-        if cat in effective and sub in effective.get(cat, []):
-            return ("learned", (cat, sub))
+        entry = learned[text]
+        if isinstance(entry, (list, tuple)) and len(entry) >= 2:
+            cat, sub = entry[0], entry[1]
+            brand = entry[2] if len(entry) > 2 else ""
+            if cat in effective and sub in effective.get(cat, []):
+                return ("learned", (cat, sub, brand))
 
     # Tier 2: word-level scoring
     word_result = _infer_from_word_scores(text)
     if word_result:
-        return ("word_scores", word_result)
+        return ("word_scores", (word_result[0], word_result[1], ""))
 
     # Tier 3: sheet keyword rules
     sheet_result = _infer_from_sheet_keywords(meal_name, mappings)
     if sheet_result:
-        return ("sheet", sheet_result)
+        return ("sheet", (sheet_result[0], sheet_result[1], ""))
 
     return None
 
