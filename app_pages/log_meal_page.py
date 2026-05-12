@@ -93,6 +93,9 @@ categories = sorted(effective.keys())
 # Clear meal name on the rerun after a successful add (must run before the selectbox renders)
 if st.session_state.pop("_fitness_meal_name_reset", False):
     st.session_state.fitness_meal_name_input = ""
+# Apply deferred meal name from template fill (must run before the selectbox renders)
+if "_fitness_meal_name_pending" in st.session_state:
+    st.session_state.fitness_meal_name_input = st.session_state.pop("_fitness_meal_name_pending")
 
 # --- Meal name field (drives inference, like description in financial tracker) ---
 df = cached_load_meals()
@@ -171,7 +174,7 @@ if inferred:
             st.rerun()
 
 # Template fill — sets meal name field + nutrition JSON
-tcol1, tcol2 = st.columns([4, 1])
+tcol1, tcol2, tcol3 = st.columns([3, 1, 1])
 with tcol1:
     template_name = st.selectbox(
         "Fill from past meal (optional)",
@@ -180,6 +183,16 @@ with tcol1:
         help="Fills nutrition JSON and meal name from a previous entry.",
     )
 with tcol2:
+    serving_multiplier = st.number_input(
+        "Servings",
+        min_value=0.1,
+        max_value=10.0,
+        value=1.0,
+        step=0.5,
+        key="fitness_meal_serving_mult",
+        help="Scale nutrition values by this multiplier (e.g. 2 = double portion).",
+    )
+with tcol3:
     st.write("")
     if st.button("Fill", disabled=not bool(template_name)):
         m = df[df["MEAL_NAME"].astype(str).str.strip() == str(template_name).strip()]
@@ -187,8 +200,10 @@ with tcol2:
             m_sorted = m.assign(_lg=pd.to_datetime(m["LOGGED_AT"], errors="coerce")).sort_values(
                 "_lg", ascending=False, na_position="last"
             )
-            st.session_state.fitness_meal_json = meal_row_to_json_text(m_sorted.iloc[0])
-            st.session_state.fitness_meal_name_input = str(template_name).strip()
+            st.session_state.fitness_meal_json = meal_row_to_json_text(
+                m_sorted.iloc[0], multiplier=serving_multiplier
+            )
+            st.session_state["_fitness_meal_name_pending"] = str(template_name).strip()
             st.rerun()
 
 

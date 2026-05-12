@@ -296,7 +296,7 @@ def _invalidate_meal_derived_caches() -> None:
         pass
 
 
-def meal_row_to_json_text(row: pd.Series) -> str:
+def meal_row_to_json_text(row: pd.Series, multiplier: float = 1.0) -> str:
     """Rebuild nested meal JSON from a flat ledger row (quick re-entry / templates)."""
 
     def num(col: str) -> float:
@@ -306,22 +306,28 @@ def meal_row_to_json_text(row: pd.Series) -> str:
         except (TypeError, ValueError):
             return 0.0
 
+    def scaled(col: str) -> float:
+        return round(num(col) * multiplier, 2)
+
+    serving_raw = str(row.get("SERVING_SIZE", "") or "").strip()
+    serving_str = f"{multiplier}x {serving_raw}" if multiplier != 1.0 and serving_raw else serving_raw
+
     payload = {
-        "serving_size": str(row.get("SERVING_SIZE", "") or ""),
-        "calories_kcal": num("CALORIES_KCAL"),
+        "serving_size": serving_str,
+        "calories_kcal": scaled("CALORIES_KCAL"),
         "macronutrients": {
-            "protein_g": num("PROTEIN_G"),
-            "carbohydrates_g": num("CARBOHYDRATES_G"),
-            "fat_g": num("FAT_G"),
-            "fiber_g": num("FIBER_G"),
-            "sugar_g": num("SUGAR_G"),
+            "protein_g": scaled("PROTEIN_G"),
+            "carbohydrates_g": scaled("CARBOHYDRATES_G"),
+            "fat_g": scaled("FAT_G"),
+            "fiber_g": scaled("FIBER_G"),
+            "sugar_g": scaled("SUGAR_G"),
         },
         "micronutrients": {
-            "sodium_mg": num("SODIUM_MG"),
-            "potassium_mg": num("POTASSIUM_MG"),
-            "calcium_mg": num("CALCIUM_MG"),
-            "iron_mg": num("IRON_MG"),
-            "vitamin_c_mg": num("VITAMIN_C_MG"),
+            "sodium_mg": scaled("SODIUM_MG"),
+            "potassium_mg": scaled("POTASSIUM_MG"),
+            "calcium_mg": scaled("CALCIUM_MG"),
+            "iron_mg": scaled("IRON_MG"),
+            "vitamin_c_mg": scaled("VITAMIN_C_MG"),
         },
     }
     c = str(row.get("CATEGORY", "") or "").strip()
