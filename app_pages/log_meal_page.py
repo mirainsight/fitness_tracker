@@ -233,28 +233,21 @@ def _clear_nutrition_json():
     st.session_state.fitness_meal_json = ""
 
 
-_json_hdr_col, _json_mult_col, _json_btn_col = st.columns([3, 1, 1])
-with _json_hdr_col:
-    st.markdown("**Nutrition JSON**")
-with _json_mult_col:
-    st.number_input(
-        "Servings",
-        min_value=0.1,
-        max_value=10.0,
-        value=1.0,
-        step=0.5,
-        key="fitness_meal_serving_mult",
-        help="Applied when a past meal auto-fills the JSON.",
-    )
-with _json_btn_col:
-    st.button("New JSON", on_click=_clear_nutrition_json, help="Clear to enter fresh nutrition data")
-
+st.number_input(
+    "Servings",
+    min_value=0.1,
+    max_value=10.0,
+    value=1.0,
+    step=0.5,
+    key="fitness_meal_serving_mult",
+    help="Applied when a past meal auto-fills the JSON.",
+)
+st.button("New JSON", on_click=_clear_nutrition_json, help="Clear to enter fresh nutrition data")
 st.text_area(
     "Nutrition JSON",
     height=280,
     placeholder="Paste nutrition JSON here…",
     key="fitness_meal_json",
-    label_visibility="collapsed",
 )
 
 add_meal = st.button("Add meal", type="primary")
