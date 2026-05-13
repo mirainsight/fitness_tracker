@@ -80,6 +80,7 @@ elif st.session_state.pop("_fitness_json_reset", False):
     st.session_state.fitness_meal_json = ""
     st.session_state.fitness_meal_comments = ""
     st.session_state.fitness_log_brand = ""
+    st.session_state.fitness_meal_serving_mult = 1.0
 
 with st.expander("Sample JSON"):
     st.code(
@@ -94,9 +95,6 @@ categories = sorted(effective.keys())
 # Clear meal name on the rerun after a successful add (must run before the selectbox renders)
 if st.session_state.pop("_fitness_meal_name_reset", False):
     st.session_state.fitness_meal_name_input = ""
-# Apply deferred meal name from template fill (must run before the selectbox renders)
-if "_fitness_meal_name_pending" in st.session_state:
-    st.session_state.fitness_meal_name_input = st.session_state.pop("_fitness_meal_name_pending")
 
 # --- Meal name field (drives inference, like description in financial tracker) ---
 df = cached_load_meals()
@@ -131,6 +129,20 @@ if meal_name and meal_name.strip():
                     st.session_state["fitness_log_sub"] = sub_inf
             if brand_inf:
                 st.session_state["fitness_log_brand"] = brand_inf
+        if meal_name in past_meal_names:
+            _m = df[df["MEAL_NAME"].astype(str).str.strip() == meal_name.strip()]
+            if not _m.empty:
+                _m_sorted = _m.assign(
+                    _lg=pd.to_datetime(_m["LOGGED_AT"], errors="coerce")
+                ).sort_values("_lg", ascending=False, na_position="last")
+                st.session_state["_fitness_meal_json_pending"] = meal_row_to_json_text(
+                    _m_sorted.iloc[0],
+                    multiplier=st.session_state.get("fitness_meal_serving_mult", 1.0),
+                )
+                if "BRAND" in _m_sorted.columns:
+                    _brand = str(_m_sorted.iloc[0].get("BRAND", "") or "").strip()
+                    if _brand:
+                        st.session_state["fitness_log_brand"] = _brand
         st.session_state["_last_inferred_meal_name"] = meal_name
 else:
     st.session_state["_last_inferred_meal_name"] = ""
@@ -212,53 +224,37 @@ with _r3col2:
         key="fitness_meal_comments",
     )
 
-# Template fill — sets meal name field + nutrition JSON
-tcol1, tcol2, tcol3 = st.columns([3, 1, 1])
-with tcol1:
-    template_name = st.selectbox(
-        "Fill from past meal (optional)",
-        options=[""] + past_meal_names,
-        key="fitness_meal_template",
-        help="Fills nutrition JSON and meal name from a previous entry.",
-    )
-with tcol2:
-    serving_multiplier = st.number_input(
+# Apply deferred nutrition JSON from auto-fill (must run before the text_area renders)
+if "_fitness_meal_json_pending" in st.session_state:
+    st.session_state.fitness_meal_json = st.session_state.pop("_fitness_meal_json_pending")
+
+
+def _clear_nutrition_json():
+    st.session_state.fitness_meal_json = ""
+
+
+_json_hdr_col, _json_mult_col, _json_btn_col = st.columns([3, 1, 1])
+with _json_hdr_col:
+    st.markdown("**Nutrition JSON**")
+with _json_mult_col:
+    st.number_input(
         "Servings",
         min_value=0.1,
         max_value=10.0,
         value=1.0,
         step=0.5,
         key="fitness_meal_serving_mult",
-        help="Scale nutrition values by this multiplier (e.g. 2 = double portion).",
+        help="Applied when a past meal auto-fills the JSON.",
     )
-with tcol3:
-    st.write("")
-    if st.button("Fill", disabled=not bool(template_name)):
-        m = df[df["MEAL_NAME"].astype(str).str.strip() == str(template_name).strip()]
-        if not m.empty:
-            m_sorted = m.assign(_lg=pd.to_datetime(m["LOGGED_AT"], errors="coerce")).sort_values(
-                "_lg", ascending=False, na_position="last"
-            )
-            st.session_state["_fitness_meal_json_pending"] = meal_row_to_json_text(
-                m_sorted.iloc[0], multiplier=serving_multiplier
-            )
-            st.session_state["_fitness_meal_name_pending"] = str(template_name).strip()
-            if "BRAND" in m_sorted.columns:
-                brand_from_template = str(m_sorted.iloc[0].get("BRAND", "") or "").strip()
-                if brand_from_template:
-                    st.session_state["fitness_log_brand"] = brand_from_template
-            st.rerun()
-
-
-# Apply deferred nutrition JSON from template fill (must run before the text_area renders)
-if "_fitness_meal_json_pending" in st.session_state:
-    st.session_state.fitness_meal_json = st.session_state.pop("_fitness_meal_json_pending")
+with _json_btn_col:
+    st.button("New JSON", on_click=_clear_nutrition_json, help="Clear to enter fresh nutrition data")
 
 st.text_area(
     "Nutrition JSON",
     height=280,
     placeholder="Paste nutrition JSON here…",
     key="fitness_meal_json",
+    label_visibility="collapsed",
 )
 
 add_meal = st.button("Add meal", type="primary")
