@@ -233,16 +233,20 @@ def _clear_nutrition_json():
     st.session_state.fitness_meal_json = ""
 
 
-st.number_input(
-    "Servings",
-    min_value=0.1,
-    max_value=10.0,
-    value=1.0,
-    step=0.5,
-    key="fitness_meal_serving_mult",
-    help="Applied when a past meal auto-fills the JSON.",
-)
-st.button("New JSON", on_click=_clear_nutrition_json, help="Clear to enter fresh nutrition data")
+_srv_col, _newjson_col = st.columns([1, 1])
+with _srv_col:
+    st.number_input(
+        "Servings",
+        min_value=0.1,
+        max_value=10.0,
+        value=1.0,
+        step=0.5,
+        key="fitness_meal_serving_mult",
+        help="Applied when a past meal auto-fills the JSON.",
+    )
+with _newjson_col:
+    st.write("")
+    st.button("New JSON", on_click=_clear_nutrition_json, help="Clear to enter fresh nutrition data")
 st.text_area(
     "Nutrition JSON",
     height=280,
