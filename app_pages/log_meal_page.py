@@ -246,7 +246,7 @@ with _srv_col:
     )
 with _newjson_col:
     st.write("")
-    st.button("New JSON", on_click=_clear_nutrition_json, help="Clear to enter fresh nutrition data")
+    st.button("Clear", on_click=_clear_nutrition_json, help="Clear to enter fresh nutrition data")
 st.text_area(
     "Nutrition JSON",
     height=280,
