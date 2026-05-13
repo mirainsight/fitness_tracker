@@ -103,14 +103,19 @@ df = cached_load_meals()
 df_hash = meals_df_hash(df)
 past_meal_names = cached_get_meal_names_list(df_hash)
 
-meal_name = st.selectbox(
-    "Meal name",
-    options=[""] + past_meal_names,
-    key="fitness_meal_name_input",
-    placeholder="e.g. Nasi lemak, Wantan mee, Grilled chicken...",
-    help="Select a past meal to auto-fill, or type a new one.",
-    accept_new_options=True,
-)
+# Row 1: Meal name + date
+_r1col1, _r1col2 = st.columns([3, 1])
+with _r1col1:
+    meal_name = st.selectbox(
+        "Meal name",
+        options=[""] + past_meal_names,
+        key="fitness_meal_name_input",
+        placeholder="e.g. Nasi lemak, Wantan mee, Grilled chicken...",
+        help="Select a past meal to auto-fill, or type a new one.",
+        accept_new_options=True,
+    )
+with _r1col2:
+    meal_date = st.date_input("Meal date", value=date.today())
 
 # Run 3-tier inference when meal name changes (same pattern as financial tracker)
 if meal_name and meal_name.strip():
@@ -145,7 +150,11 @@ if _pending_cat:
 cat_options = categories + [_ADD_NEW_CAT]
 if "fitness_log_cat" not in st.session_state:
     st.session_state.fitness_log_cat = categories[0] if categories else ""
-cat = st.selectbox("Category", cat_options, key="fitness_log_cat")
+
+# Row 2: Category + Subcategory
+_r2col1, _r2col2 = st.columns(2)
+with _r2col1:
+    cat = st.selectbox("Category", cat_options, key="fitness_log_cat")
 
 if cat == _ADD_NEW_CAT:
     st.text_input("New category name", key="fitness_new_cat_inline", placeholder="e.g. Supplements")
@@ -156,24 +165,10 @@ else:
     sub_options = subs + [_ADD_NEW_SUB]
     if st.session_state.get("fitness_log_sub") not in sub_options:
         st.session_state.fitness_log_sub = subs[0] if subs else "Other"
-    sub = st.selectbox("Subcategory", sub_options, key="fitness_log_sub")
+    with _r2col2:
+        sub = st.selectbox("Subcategory", sub_options, key="fitness_log_sub")
     if sub == _ADD_NEW_SUB:
         st.text_input("New subcategory name", key="fitness_new_sub_inline", placeholder="e.g. Smoothie")
-
-# Brand / shop field
-past_brands = (
-    sorted(df[df["BRAND"].astype(str).str.strip() != ""]["BRAND"].dropna().unique())
-    if "BRAND" in df.columns
-    else []
-)
-st.selectbox(
-    "Brand / Shop (optional)",
-    options=[""] + past_brands,
-    key="fitness_log_brand",
-    placeholder="e.g. McDonald's, MyVegas, Mama's stall, Homemade…",
-    help="Restaurant, brand, stall, or shop the food came from.",
-    accept_new_options=True,
-)
 
 # Inference hint + Wrong? Forget
 inferred = st.session_state.get("_last_inferred_meal_result")
@@ -193,6 +188,29 @@ if inferred:
             st.session_state["_last_inferred_meal_result"] = None
             st.session_state["_last_inferred_meal_name"] = ""
             st.rerun()
+
+# Row 3: Brand + Comments
+past_brands = (
+    sorted(df[df["BRAND"].astype(str).str.strip() != ""]["BRAND"].dropna().unique())
+    if "BRAND" in df.columns
+    else []
+)
+_r3col1, _r3col2 = st.columns(2)
+with _r3col1:
+    st.selectbox(
+        "Brand / Shop (optional)",
+        options=[""] + past_brands,
+        key="fitness_log_brand",
+        placeholder="e.g. McDonald's, MyVegas, Mama's stall, Homemade…",
+        help="Restaurant, brand, stall, or shop the food came from.",
+        accept_new_options=True,
+    )
+with _r3col2:
+    st.text_input(
+        "Comments (optional)",
+        placeholder="e.g. Post-workout, cheat day, estimate…",
+        key="fitness_meal_comments",
+    )
 
 # Template fill — sets meal name field + nutrition JSON
 tcol1, tcol2, tcol3 = st.columns([3, 1, 1])
@@ -236,17 +254,11 @@ with tcol3:
 if "_fitness_meal_json_pending" in st.session_state:
     st.session_state.fitness_meal_json = st.session_state.pop("_fitness_meal_json_pending")
 
-meal_date = st.date_input("Meal date", value=date.today())
 st.text_area(
     "Nutrition JSON",
     height=280,
     placeholder="Paste nutrition JSON here…",
     key="fitness_meal_json",
-)
-st.text_input(
-    "Comments (optional)",
-    placeholder="e.g. Post-workout, cheat day, estimate…",
-    key="fitness_meal_comments",
 )
 
 add_meal = st.button("Add meal", type="primary")
